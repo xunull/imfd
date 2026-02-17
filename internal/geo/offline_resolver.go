@@ -8,11 +8,6 @@ import (
 	"github.com/xunull/imfd/internal/media"
 )
 
-// GeoResolver 地理反查接口
-type GeoResolver interface {
-	Resolve(lat, lon float64) (*media.GeoLocation, error)
-}
-
 // ChinaCity 中国城市信息
 type ChinaCity struct {
 	Name      string
@@ -33,6 +28,11 @@ func NewOfflineResolver() *OfflineResolver {
 	return &OfflineResolver{
 		cities: defaultChinaCities,
 	}
+}
+
+// Name 返回提供者名称
+func (r *OfflineResolver) Name() string {
+	return "offline"
 }
 
 // Resolve 反查经纬度到省/市

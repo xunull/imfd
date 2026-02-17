@@ -21,8 +21,16 @@ func Run(cfg *config.Config) error {
 	fileCh := make(chan string, cfg.ChannelSize)
 	recordCh := make(chan *media.MediaRecord, cfg.ChannelSize)
 
-	// 创建地理反查器
-	resolver := geo.NewOfflineResolver()
+	// 根据配置创建地理反查器
+	geoProvider, err := geo.ParseGeoProvider(cfg.GeoProvider)
+	if err != nil {
+		return err
+	}
+	resolver, err := geo.NewResolver(geoProvider)
+	if err != nil {
+		return fmt.Errorf("创建地理反查器失败: %w", err)
+	}
+	fmt.Printf("使用 GPS 反查方式: %s\n", resolver.Name())
 
 	// 创建统计注册中心并注册默认维度
 	registry := stats.NewRegistry()
@@ -103,7 +111,7 @@ func Run(cfg *config.Config) error {
 }
 
 // extractAndResolve 提取媒体信息并做地理反查
-func extractAndResolve(filePath string, resolver *geo.OfflineResolver) *media.MediaRecord {
+func extractAndResolve(filePath string, resolver geo.GeoResolver) *media.MediaRecord {
 	record := extract.Extract(filePath)
 
 	// 对有 GPS 信息的记录做地理反查

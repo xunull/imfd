@@ -33,6 +33,7 @@ type Config struct {
 	Extractors   int
 	OutputFormat OutputFormat
 	ChannelSize  int
+	GeoProvider  string // 地理反查提供者: offline, nominatim
 }
 
 // Validate 校验配置合法性

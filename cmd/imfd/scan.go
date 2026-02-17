@@ -15,6 +15,7 @@ var (
 	flagExtractors   int
 	flagOutputFormat string
 	flagChannelSize  int
+	flagGeoProvider  string
 )
 
 var scanCmd = &cobra.Command{
@@ -31,6 +32,7 @@ func init() {
 	scanCmd.Flags().IntVarP(&flagExtractors, "extractors", "e", 16, "媒体提取并发数")
 	scanCmd.Flags().StringVarP(&flagOutputFormat, "format", "f", "table", "输出格式: table, json, both")
 	scanCmd.Flags().IntVar(&flagChannelSize, "channel-size", 1024, "内部通道缓冲大小")
+	scanCmd.Flags().StringVarP(&flagGeoProvider, "geo-provider", "g", "offline", "GPS 反查方式: offline(离线), nominatim(OpenStreetMap在线)")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
@@ -53,6 +55,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 		Extractors:   flagExtractors,
 		OutputFormat: config.ParseOutputFormat(flagOutputFormat),
 		ChannelSize:  flagChannelSize,
+		GeoProvider:  flagGeoProvider,
 	}
 
 	if err := cfg.Validate(); err != nil {
