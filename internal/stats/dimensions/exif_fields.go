@@ -15,7 +15,7 @@ func NewISODimension() stats.DimensionCounter {
 			}
 			return []string{"Unknown"}
 		},
-		stats.DimensionMeta{SortBy: "count", SortOrder: "desc", Desc: "按ISO感光度分组统计"},
+		stats.DimensionMeta{SortBy: "count", SortOrder: "desc", Desc: "按ISO感光度分组统计", AppliesTo: []media.MediaType{media.TypeImage}},
 	)
 }
 
@@ -29,7 +29,7 @@ func NewApertureDimension() stats.DimensionCounter {
 			}
 			return []string{"Unknown"}
 		},
-		stats.DimensionMeta{SortBy: "count", SortOrder: "desc", Desc: "按光圈值分组统计"},
+		stats.DimensionMeta{SortBy: "count", SortOrder: "desc", Desc: "按光圈值分组统计", AppliesTo: []media.MediaType{media.TypeImage}},
 	)
 }
 
@@ -43,7 +43,7 @@ func NewShutterSpeedDimension() stats.DimensionCounter {
 			}
 			return []string{"Unknown"}
 		},
-		stats.DimensionMeta{SortBy: "count", SortOrder: "desc", Desc: "按快门速度分组统计"},
+		stats.DimensionMeta{SortBy: "count", SortOrder: "desc", Desc: "按快门速度分组统计", AppliesTo: []media.MediaType{media.TypeImage}},
 	)
 }
 
@@ -57,7 +57,7 @@ func NewFocalLengthDimension() stats.DimensionCounter {
 			}
 			return []string{"Unknown"}
 		},
-		stats.DimensionMeta{SortBy: "count", SortOrder: "desc", Desc: "按焦距分组统计"},
+		stats.DimensionMeta{SortBy: "count", SortOrder: "desc", Desc: "按焦距分组统计", AppliesTo: []media.MediaType{media.TypeImage}},
 	)
 }
 
@@ -71,7 +71,7 @@ func NewExposureModeDimension() stats.DimensionCounter {
 			}
 			return []string{"Unknown"}
 		},
-		stats.DimensionMeta{SortBy: "count", SortOrder: "desc", Desc: "按曝光模式分组统计"},
+		stats.DimensionMeta{SortBy: "count", SortOrder: "desc", Desc: "按曝光模式分组统计", AppliesTo: []media.MediaType{media.TypeImage}},
 	)
 }
 
@@ -85,7 +85,7 @@ func NewExposureProgramDimension() stats.DimensionCounter {
 			}
 			return []string{"Unknown"}
 		},
-		stats.DimensionMeta{SortBy: "count", SortOrder: "desc", Desc: "按曝光程序分组统计"},
+		stats.DimensionMeta{SortBy: "count", SortOrder: "desc", Desc: "按曝光程序分组统计", AppliesTo: []media.MediaType{media.TypeImage}},
 	)
 }
 
@@ -99,7 +99,7 @@ func NewWhiteBalanceDimension() stats.DimensionCounter {
 			}
 			return []string{"Unknown"}
 		},
-		stats.DimensionMeta{SortBy: "count", SortOrder: "desc", Desc: "按白平衡分组统计"},
+		stats.DimensionMeta{SortBy: "count", SortOrder: "desc", Desc: "按白平衡分组统计", AppliesTo: []media.MediaType{media.TypeImage}},
 	)
 }
 
@@ -113,7 +113,7 @@ func NewMeteringModeDimension() stats.DimensionCounter {
 			}
 			return []string{"Unknown"}
 		},
-		stats.DimensionMeta{SortBy: "count", SortOrder: "desc", Desc: "按测光模式分组统计"},
+		stats.DimensionMeta{SortBy: "count", SortOrder: "desc", Desc: "按测光模式分组统计", AppliesTo: []media.MediaType{media.TypeImage}},
 	)
 }
 
@@ -127,6 +127,6 @@ func NewFlashDimension() stats.DimensionCounter {
 			}
 			return []string{"Unknown"}
 		},
-		stats.DimensionMeta{SortBy: "count", SortOrder: "desc", Desc: "按闪光灯状态分组统计"},
+		stats.DimensionMeta{SortBy: "count", SortOrder: "desc", Desc: "按闪光灯状态分组统计", AppliesTo: []media.MediaType{media.TypeImage}},
 	)
 }

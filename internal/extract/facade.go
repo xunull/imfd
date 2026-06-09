@@ -23,6 +23,8 @@ func Extract(filePath string) *media.MediaRecord {
 		return BuildImageRecord(filePath, fileInfo)
 	case media.TypeVideo:
 		return BuildVideoRecord(filePath, fileInfo)
+	case media.TypeAudio:
+		return BuildAudioRecord(filePath, fileInfo)
 	default:
 		return &media.MediaRecord{
 			FilePath: filePath,

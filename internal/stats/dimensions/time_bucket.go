@@ -20,6 +20,7 @@ func NewTimeBucketDimension() stats.DimensionCounter {
 			SortBy:    "key",
 			SortOrder: "asc",
 			Desc:      "按拍摄时间段(凌晨/上午/中午/下午/晚上/半夜)分组统计",
+			AppliesTo: []media.MediaType{media.TypeImage, media.TypeVideo},
 		},
 	)
 }

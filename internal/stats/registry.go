@@ -16,6 +16,11 @@ type DimensionMeta struct {
 	SortBy    string `json:"sort_by,omitempty"` // "count" or "key"
 	SortOrder string `json:"sort_order,omitempty"` // "asc" or "desc"
 	Desc      string `json:"desc,omitempty"`
+
+	// AppliesTo 维度适用于哪些媒体类型；nil 表示适用所有类型（默认）。
+	// 用法：scan audio 时 RegisterDefaults 会跳过 AppliesTo 与 [TypeAudio] 无交集的维度。
+	// 例如音频专属维度（采样率/比特率等）填 []MediaType{TypeAudio}。
+	AppliesTo []media.MediaType `json:"applies_to,omitempty"`
 }
 
 // DimensionResult 一个维度的统计结果
@@ -26,9 +31,14 @@ type DimensionResult struct {
 }
 
 // Totals 总量统计
+//
+// 契约：TotalCount = ImageCount + VideoCount + AudioCount + ...
+// 未来新增媒体类型会继续加 *Count 字段。下游 JSON 消费者请用 TotalCount，
+// 不要用 ImageCount + VideoCount 推算总数。
 type Totals struct {
 	ImageCount int `json:"image_count"`
 	VideoCount int `json:"video_count"`
+	AudioCount int `json:"audio_count"`
 	TotalCount int `json:"total_count"`
 	ErrorCount int `json:"error_count"`
 }
@@ -133,6 +143,8 @@ func (r *Registry) Consume(record *media.MediaRecord) {
 		r.totals.ImageCount++
 	case media.TypeVideo:
 		r.totals.VideoCount++
+	case media.TypeAudio:
+		r.totals.AudioCount++
 	}
 
 	for _, c := range r.counters {

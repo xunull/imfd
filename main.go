@@ -3,10 +3,12 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"github.com/xunull/imfd/cmd"
 )
 
 func main() {
-	if err := rootCmd.Execute(); err != nil {
+	if err := cmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

@@ -1,10 +1,8 @@
 package extract
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -12,64 +10,18 @@ import (
 	"github.com/xunull/imfd/internal/media"
 )
 
-// ffprobeOutput ffprobe JSON 输出结构
-type ffprobeOutput struct {
-	Format  ffprobeFormat   `json:"format"`
-	Streams []ffprobeStream `json:"streams"`
-}
-
-type ffprobeFormat struct {
-	Duration string            `json:"duration"`
-	BitRate  string            `json:"bit_rate"`
-	Tags     map[string]string `json:"tags"`
-}
-
-type ffprobeStream struct {
-	CodecType string `json:"codec_type"`
-	CodecName string `json:"codec_name"`
-	Width     int    `json:"width"`
-	Height    int    `json:"height"`
-	RFrameRate string `json:"r_frame_rate"`
-	Tags      map[string]string `json:"tags"`
-}
-
-// ffprobeAvailable 检查 ffprobe 是否可用
-var ffprobeAvailable *bool
-
-func checkFFprobe() bool {
-	if ffprobeAvailable != nil {
-		return *ffprobeAvailable
-	}
-	_, err := exec.LookPath("ffprobe")
-	result := err == nil
-	ffprobeAvailable = &result
-	return result
-}
-
 // ExtractVideoMeta 使用 ffprobe 提取视频元数据
 func ExtractVideoMeta(filePath string) (*media.VideoInfo, error) {
-	if !checkFFprobe() {
-		return nil, fmt.Errorf("ffprobe 未安装，无法提取视频元数据")
-	}
-
-	cmd := exec.Command("ffprobe",
-		"-v", "quiet",
-		"-print_format", "json",
-		"-show_format",
-		"-show_streams",
-		filePath,
-	)
-
-	output, err := cmd.Output()
+	probe, err := Probe(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("ffprobe 执行失败: %w", err)
+		return nil, err
 	}
+	return BuildVideoInfo(probe), nil
+}
 
-	var probe ffprobeOutput
-	if err := json.Unmarshal(output, &probe); err != nil {
-		return nil, fmt.Errorf("解析 ffprobe 输出失败: %w", err)
-	}
-
+// BuildVideoInfo 从 ProbeResult 中提取视频相关字段。
+// 抽成独立函数以便单测（不依赖真实 ffprobe 进程）。
+func BuildVideoInfo(probe *ProbeResult) *media.VideoInfo {
 	info := &media.VideoInfo{}
 
 	if dur, err := strconv.ParseFloat(probe.Format.Duration, 64); err == nil {
@@ -98,7 +50,7 @@ func ExtractVideoMeta(filePath string) (*media.VideoInfo, error) {
 		}
 	}
 
-	return info, nil
+	return info
 }
 
 func parseVideoDateTime(s string) (time.Time, error) {

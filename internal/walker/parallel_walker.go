@@ -11,17 +11,23 @@ import (
 
 // ParallelWalker 并行目录遍历器
 type ParallelWalker struct {
-	pool    *ants.Pool
-	fileCh  chan<- string
-	wg      sync.WaitGroup
-	errOnce sync.Once
-	err     error
+	pool         *ants.Pool
+	fileCh       chan<- string
+	allowedTypes []media.MediaType
+	wg           sync.WaitGroup
+	errOnce      sync.Once
+	err          error
 }
 
 // NewParallelWalker 创建并行遍历器
-func NewParallelWalker(poolSize int, fileCh chan<- string) (*ParallelWalker, error) {
+//
+// allowedTypes=nil 时遍历所有媒体类型（向后兼容）。
+// 非 nil 时只发送匹配的文件到 fileCh，不匹配的在 walker 层就 skip，
+// 不进入 extractor 阶段，避免对 scan audio 模式下视频文件的多余 ffprobe 调用。
+func NewParallelWalker(poolSize int, fileCh chan<- string, allowedTypes []media.MediaType) (*ParallelWalker, error) {
 	w := &ParallelWalker{
-		fileCh: fileCh,
+		fileCh:       fileCh,
+		allowedTypes: allowedTypes,
 	}
 
 	pool, err := ants.NewPool(poolSize, ants.WithPreAlloc(false))
@@ -82,8 +88,8 @@ func (w *ParallelWalker) walkDir(dir string) {
 			continue
 		}
 
-		// 仅发送媒体文件
-		if media.IsMediaFile(entry.Name()) {
+		// 仅发送匹配当前 scan 类型的媒体文件
+		if media.IsMatchedFile(entry.Name(), w.allowedTypes) {
 			w.fileCh <- fullPath
 		}
 	}

@@ -9,6 +9,7 @@ const (
 	TypeUnknown MediaType = iota
 	TypeImage
 	TypeVideo
+	TypeAudio
 )
 
 func (t MediaType) String() string {
@@ -17,6 +18,8 @@ func (t MediaType) String() string {
 		return "image"
 	case TypeVideo:
 		return "video"
+	case TypeAudio:
+		return "audio"
 	default:
 		return "unknown"
 	}
@@ -85,6 +88,23 @@ type VideoInfo struct {
 	HasDateTime bool
 }
 
+// AudioInfo 音频特有信息
+//
+// 注意：音频文件的"录制时间"不向上传播到 MediaRecord.CaptureTime —— 录音年份
+// 和摄影"拍摄时间"是两个语义概念，混在一起会让「拍摄时间段」维度把 1965 年的
+// 老歌归类成"凌晨"。RecordedTime 留作 audio-only 字段，未来如需"录制年代"维度
+// 从这里取。
+type AudioInfo struct {
+	Codec            string  // 主音轨编解码器（mp3/flac/aac/...）
+	Bitrate          int64   // 比特率（bps）
+	SampleRate       int     // 采样率（Hz）
+	Channels         int     // 声道数
+	ChannelLayout    string  // 声道布局（mono/stereo/5.1/...）
+	Duration         float64 // 时长（秒）
+	RecordedTime     time.Time
+	HasRecordedTime  bool
+}
+
 // MediaRecord 统一媒体记录
 type MediaRecord struct {
 	FilePath string
@@ -97,6 +117,9 @@ type MediaRecord struct {
 
 	// 视频信息
 	Video *VideoInfo
+
+	// 音频信息（仅 TypeAudio 时填充）
+	Audio *AudioInfo
 
 	// 反查后的地理位置
 	Location *GeoLocation

@@ -34,6 +34,7 @@ func (p *TablePrinter) printTotals(totals stats.Totals) {
 	t.AppendRows([]table.Row{
 		{"图像", totals.ImageCount},
 		{"视频", totals.VideoCount},
+		{"音频", totals.AudioCount},
 		{"总计", totals.TotalCount},
 		{"错误", totals.ErrorCount},
 	})

@@ -16,6 +16,7 @@ func NewCameraModelDimension() stats.DimensionCounter {
 			SortBy:    "count",
 			SortOrder: "desc",
 			Desc:      "按相机型号分组统计",
+			AppliesTo: []media.MediaType{media.TypeImage},
 		},
 	)
 }

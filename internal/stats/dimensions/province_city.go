@@ -16,6 +16,7 @@ func NewProvinceDimension() stats.DimensionCounter {
 			SortBy:    "count",
 			SortOrder: "desc",
 			Desc:      "按拍摄地省份分组统计",
+			AppliesTo: []media.MediaType{media.TypeImage},
 		},
 	)
 }
@@ -31,6 +32,7 @@ func NewCityDimension() stats.DimensionCounter {
 			SortBy:    "count",
 			SortOrder: "desc",
 			Desc:      "按拍摄地城市分组统计",
+			AppliesTo: []media.MediaType{media.TypeImage},
 		},
 	)
 }
@@ -46,6 +48,7 @@ func NewProvinceCityDimension() stats.DimensionCounter {
 			SortBy:    "count",
 			SortOrder: "desc",
 			Desc:      "按拍摄地省/市组合分组统计",
+			AppliesTo: []media.MediaType{media.TypeImage},
 		},
 	)
 }

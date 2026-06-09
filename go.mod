@@ -7,6 +7,7 @@ require (
 	github.com/panjf2000/ants/v2 v2.11.5
 	github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd
 	github.com/spf13/cobra v1.10.2
+	golang.org/x/term v0.29.0
 )
 
 require (

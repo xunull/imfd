@@ -67,6 +67,8 @@ func TestRegistry(t *testing.T) {
 	registry.Consume(&media.MediaRecord{Type: media.TypeImage, Exif: &media.ExifInfo{CameraModel: "Canon"}})
 	registry.Consume(&media.MediaRecord{Type: media.TypeVideo})
 	registry.Consume(&media.MediaRecord{Type: media.TypeImage, Exif: &media.ExifInfo{CameraModel: "Canon"}})
+	registry.Consume(&media.MediaRecord{Type: media.TypeAudio, Audio: &media.AudioInfo{Codec: "mp3"}})
+	registry.Consume(&media.MediaRecord{Type: media.TypeAudio, Audio: &media.AudioInfo{Codec: "flac"}})
 
 	report := registry.Report()
 
@@ -76,8 +78,16 @@ func TestRegistry(t *testing.T) {
 	if report.Totals.VideoCount != 1 {
 		t.Errorf("expected 1 video, got %d", report.Totals.VideoCount)
 	}
-	if report.Totals.TotalCount != 3 {
-		t.Errorf("expected 3 total, got %d", report.Totals.TotalCount)
+	if report.Totals.AudioCount != 2 {
+		t.Errorf("expected 2 audios, got %d", report.Totals.AudioCount)
+	}
+	if report.Totals.TotalCount != 5 {
+		t.Errorf("expected 5 total, got %d", report.Totals.TotalCount)
+	}
+	// 验证 Totals 契约：sum 自洽
+	sum := report.Totals.ImageCount + report.Totals.VideoCount + report.Totals.AudioCount
+	if sum != report.Totals.TotalCount {
+		t.Errorf("Totals 契约破坏: image+video+audio=%d != total=%d", sum, report.Totals.TotalCount)
 	}
 	if len(report.Dimensions) != 1 {
 		t.Errorf("expected 1 dimension, got %d", len(report.Dimensions))
