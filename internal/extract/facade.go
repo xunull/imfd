@@ -26,8 +26,12 @@ func Extract(filePath string) *media.MediaRecord {
 	case media.TypeAudio:
 		return BuildAudioRecord(filePath, fileInfo)
 	default:
+		// 非媒体文件仍返回一个最小填充的 record，让 imfd info 能展示 FILE section
 		return &media.MediaRecord{
 			FilePath: filePath,
+			FileName: fileInfo.Name(),
+			FileSize: fileInfo.Size(),
+			ModTime:  fileInfo.ModTime(),
 			Type:     media.TypeUnknown,
 		}
 	}

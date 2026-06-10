@@ -76,6 +76,7 @@ func BuildVideoRecord(filePath string, fileInfo os.FileInfo) *media.MediaRecord 
 		FilePath:   filePath,
 		FileName:   fileInfo.Name(),
 		FileSize:   fileInfo.Size(),
+		ModTime:    fileInfo.ModTime(),
 		Type:       media.TypeVideo,
 		Attributes: make(map[string]string),
 	}

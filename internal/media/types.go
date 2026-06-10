@@ -27,65 +27,65 @@ func (t MediaType) String() string {
 
 // GPSInfo GPS 位置信息
 type GPSInfo struct {
-	Latitude  float64
-	Longitude float64
-	Altitude  float64
-	HasGPS    bool
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+	Altitude  float64 `json:"altitude,omitempty"`
+	HasGPS    bool    `json:"has_gps"`
 }
 
 // GeoLocation 反查后的地理位置
 type GeoLocation struct {
-	Country  string
-	Province string
-	City     string
+	Country  string `json:"country,omitempty"`
+	Province string `json:"province,omitempty"`
+	City     string `json:"city,omitempty"`
 }
 
 // ExifInfo EXIF 信息
 type ExifInfo struct {
 	// 相机与镜头
-	CameraMake  string
-	CameraModel string
-	LensMake    string
-	LensModel   string
+	CameraMake  string `json:"camera_make,omitempty"`
+	CameraModel string `json:"camera_model,omitempty"`
+	LensMake    string `json:"lens_make,omitempty"`
+	LensModel   string `json:"lens_model,omitempty"`
 
 	// 曝光参数
-	Aperture           string // 光圈 f 值
-	ShutterSpeed       string // 快门速度
-	FocalLength        string // 焦距
-	FocalLength35mm    string // 等效 35mm 焦距
-	ISO                string // 感光度
-	WhiteBalance       string // 白平衡
-	ExposureCompensation string // 曝光补偿
-	ExposureTime       string // 曝光时间
-	ExposureMode       string // 曝光模式
-	ExposureProgram    string // 曝光程序
-	MeteringMode       string // 测光模式
-	Flash              string // 闪光灯
-	ColorSpace         string // 色彩空间
+	Aperture             string `json:"aperture,omitempty"`              // 光圈 f 值
+	ShutterSpeed         string `json:"shutter_speed,omitempty"`         // 快门速度
+	FocalLength          string `json:"focal_length,omitempty"`          // 焦距
+	FocalLength35mm      string `json:"focal_length_35mm,omitempty"`     // 等效 35mm 焦距
+	ISO                  string `json:"iso,omitempty"`                   // 感光度
+	WhiteBalance         string `json:"white_balance,omitempty"`         // 白平衡
+	ExposureCompensation string `json:"exposure_compensation,omitempty"` // 曝光补偿
+	ExposureTime         string `json:"exposure_time,omitempty"`         // 曝光时间
+	ExposureMode         string `json:"exposure_mode,omitempty"`         // 曝光模式
+	ExposureProgram      string `json:"exposure_program,omitempty"`      // 曝光程序
+	MeteringMode         string `json:"metering_mode,omitempty"`         // 测光模式
+	Flash                string `json:"flash,omitempty"`                 // 闪光灯
+	ColorSpace           string `json:"color_space,omitempty"`           // 色彩空间
 
 	// 图像尺寸
-	ImageWidth  int
-	ImageHeight int
+	ImageWidth  int `json:"image_width,omitempty"`
+	ImageHeight int `json:"image_height,omitempty"`
 
 	// 拍摄时间
-	DateTimeOriginal time.Time
-	HasDateTime      bool
+	DateTimeOriginal time.Time `json:"date_time_original,omitzero"`
+	HasDateTime      bool      `json:"has_date_time,omitempty"`
 
 	// GPS
-	GPS GPSInfo
+	GPS GPSInfo `json:"gps"`
 }
 
 // VideoInfo 视频特有信息
 type VideoInfo struct {
-	Duration    float64 // 时长（秒）
-	Width       int
-	Height      int
-	Codec       string
-	AudioCodec  string
-	Bitrate     int64
-	FrameRate   string
-	CreateTime  time.Time
-	HasDateTime bool
+	Duration    float64   `json:"duration,omitempty"` // 时长（秒）
+	Width       int       `json:"width,omitempty"`
+	Height      int       `json:"height,omitempty"`
+	Codec       string    `json:"codec,omitempty"`
+	AudioCodec  string    `json:"audio_codec,omitempty"`
+	Bitrate     int64     `json:"bitrate,omitempty"`
+	FrameRate   string    `json:"frame_rate,omitempty"`
+	CreateTime  time.Time `json:"create_time,omitzero"`
+	HasDateTime bool      `json:"has_date_time,omitempty"`
 }
 
 // AudioInfo 音频特有信息
@@ -95,44 +95,48 @@ type VideoInfo struct {
 // 老歌归类成"凌晨"。RecordedTime 留作 audio-only 字段，未来如需"录制年代"维度
 // 从这里取。
 type AudioInfo struct {
-	Codec            string  // 主音轨编解码器（mp3/flac/aac/...）
-	Bitrate          int64   // 比特率（bps）
-	SampleRate       int     // 采样率（Hz）
-	Channels         int     // 声道数
-	ChannelLayout    string  // 声道布局（mono/stereo/5.1/...）
-	Duration         float64 // 时长（秒）
-	RecordedTime     time.Time
-	HasRecordedTime  bool
+	Codec           string    `json:"codec,omitempty"`          // 主音轨编解码器（mp3/flac/aac/...）
+	Bitrate         int64     `json:"bitrate,omitempty"`        // 比特率（bps）
+	SampleRate      int       `json:"sample_rate,omitempty"`    // 采样率（Hz）
+	Channels        int       `json:"channels,omitempty"`       // 声道数
+	ChannelLayout   string    `json:"channel_layout,omitempty"` // 声道布局（mono/stereo/5.1/...）
+	Duration        float64   `json:"duration,omitempty"`       // 时长（秒）
+	RecordedTime    time.Time `json:"recorded_time,omitzero"`
+	HasRecordedTime bool      `json:"has_recorded_time,omitempty"`
 }
 
 // MediaRecord 统一媒体记录
+//
+// JSON 字段命名走 snake_case，和 stats.Totals 的 JSON 契约一致。
 type MediaRecord struct {
-	FilePath string
-	FileName string
-	FileSize int64
-	Type     MediaType
+	FilePath string    `json:"file_path"`
+	FileName string    `json:"file_name"`
+	FileSize int64     `json:"file_size"`
+	ModTime  time.Time `json:"mod_time"` // 文件系统 mtime（os.FileInfo.ModTime）
+
+	Type MediaType `json:"type"`
 
 	// EXIF 信息（图像时填充）
-	Exif *ExifInfo
+	Exif *ExifInfo `json:"exif,omitempty"`
 
 	// 视频信息
-	Video *VideoInfo
+	Video *VideoInfo `json:"video,omitempty"`
 
 	// 音频信息（仅 TypeAudio 时填充）
-	Audio *AudioInfo
+	Audio *AudioInfo `json:"audio,omitempty"`
 
 	// 反查后的地理位置
-	Location *GeoLocation
+	Location *GeoLocation `json:"location,omitempty"`
 
 	// 拍摄/创建时间（从 EXIF 或视频元数据中提取）
-	CaptureTime    time.Time
-	HasCaptureTime bool
+	CaptureTime    time.Time `json:"capture_time,omitzero"`
+	HasCaptureTime bool      `json:"has_capture_time,omitempty"`
 
-	// 扩展属性，用于存放尚未结构化的字段
-	Attributes map[string]string
+	// 扩展属性，用于存放尚未结构化的字段（含 *_error 键记录提取错误）
+	Attributes map[string]string `json:"attributes,omitempty"`
 
 	// 处理时出现的错误
-	Error error
+	Error error `json:"-"` // 不进 JSON（error 接口序列化为 {}，没用）
 }
 
 // GetCameraModel 获取相机型号

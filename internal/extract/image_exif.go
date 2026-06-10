@@ -238,6 +238,7 @@ func BuildImageRecord(filePath string, fileInfo os.FileInfo) *media.MediaRecord 
 		FilePath:   filePath,
 		FileName:   fileInfo.Name(),
 		FileSize:   fileInfo.Size(),
+		ModTime:    fileInfo.ModTime(),
 		Type:       media.TypeImage,
 		Attributes: make(map[string]string),
 	}

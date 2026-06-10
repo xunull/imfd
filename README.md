@@ -133,6 +133,52 @@ AUDIO
 | `--legacy-table` | false | 回退到旧 go-pretty 表格输出 |
 | `-f`, `--format` | table | `table` / `json` / `both`；table 默认走 dashboard |
 
+## 单文件查询 (info)
+
+`imfd info <file>` 看单个文件的完整元数据。和 `scan`（聚合统计）相对——`info` 是逐文件展开。
+
+```bash
+imfd info photo.jpg               # 单文件
+imfd info *.jpg                   # shell glob 多文件
+find . -name '*.heic' | xargs imfd info  # xargs 流水线
+imfd info song.mp3 -f json        # JSON 输出（snake_case 字段）
+```
+
+输出按 section 分组（FILE / EXIF / GPS / AUDIO / VIDEO / ERRORS），缺失字段或全空 section 自动隐藏：
+
+```
+FILE
+  路径         /Users/quincy/Pictures/IMG_8784.JPG
+  大小         2.29 MB
+  修改时间     2024-08-12 15:30:42
+  类型         image
+
+EXIF
+  相机         Canon EOS 1300D
+  镜头         EF-S18-55mm f/3.5-5.6 IS II
+  拍摄时间     2024-03-15 14:22:11
+  ISO          800
+  光圈         f/5
+  快门         1/60s
+  焦距         42mm
+  尺寸         6000x4000
+
+GPS
+  纬度         31.230400
+  经度         121.473700
+  地点         上海市 / 黄浦区
+```
+
+**多文件错误模型**：某个文件失败不中断后面文件，错误印到 stderr，末尾退出码 = 1 如果任一失败。
+`imfd info ./dir` 传目录时友好报错并提示用 `scan`。
+
+### info 关键 flag
+
+| flag | 默认 | 说明 |
+|---|---|---|
+| `-f`, `--format` | table | `table`（人读 section）/ `json`（marshal MediaRecord，snake_case）|
+| `-g`, `--geo-provider` | offline | GPS 反查方式：offline（离线中国城市表）/ nominatim（OSM 在线）|
+
 ### 命令参数
 
 | 参数 | 简写 | 默认值 | 说明 |

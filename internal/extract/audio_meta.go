@@ -109,6 +109,7 @@ func BuildAudioRecord(filePath string, fileInfo os.FileInfo) *media.MediaRecord 
 		FilePath:   filePath,
 		FileName:   fileInfo.Name(),
 		FileSize:   fileInfo.Size(),
+		ModTime:    fileInfo.ModTime(),
 		Type:       media.TypeAudio,
 		Attributes: make(map[string]string),
 	}
