@@ -17,8 +17,17 @@ import (
 	"github.com/xunull/imfd/internal/walker"
 )
 
-// Run 执行完整的扫描-提取-统计-输出流水线
+// Run 执行完整的 scan 流水线（向后兼容包装；新 caller 用 RunWithHandler）
 func Run(cfg *config.Config) error {
+	return RunWithHandler(cfg, nil)
+}
+
+// RunWithHandler 是 scan / list 共享的流水线。
+// handler=nil 时走 scan aggregate 路径（保留向后兼容；现 scan 走这条）。
+// handler 非 nil 时跳过 dimensions registry，stage 3 调 handler.Handle。
+//
+// stage 3 单点串行 goroutine（stdout 顺序写入天然安全）。
+func RunWithHandler(cfg *config.Config, handler RecordHandler) error {
 	start := time.Now()
 
 	// 启动 stderr spinner（无 TTY / NO_COLOR / IMFD_NO_SPINNER 时是 no-op）
@@ -46,9 +55,12 @@ func Run(cfg *config.Config) error {
 		}
 	}
 
-	// 创建统计注册中心并注册默认维度
-	registry := stats.NewRegistry()
-	dimensions.RegisterDefaults(registry, cfg.MediaTypes)
+	// 创建统计注册中心（仅 scan 模式需要；list 模式 handler 非 nil 跳过）
+	var registry *stats.Registry
+	if handler == nil {
+		registry = stats.NewRegistry()
+		dimensions.RegisterDefaults(registry, cfg.MediaTypes)
+	}
 
 	// 阶段 1: 启动并行目录遍历
 	walkerDone := make(chan error, 1)
@@ -106,11 +118,15 @@ func Run(cfg *config.Config) error {
 		close(extractDone)
 	}()
 
-	// 阶段 3: 单点聚合 goroutine
+	// 阶段 3: 单点处理 goroutine（scan: registry consume / list: handler.Handle）
 	aggregateDone := make(chan struct{})
 	go func() {
 		for record := range recordCh {
-			registry.Consume(record)
+			if handler != nil {
+				_ = handler.Handle(record) // 错误不中断 pipeline；handler 自己累计
+			} else {
+				registry.Consume(record)
+			}
 		}
 		close(aggregateDone)
 	}()
@@ -122,9 +138,11 @@ func Run(cfg *config.Config) error {
 	<-extractDone
 	<-aggregateDone
 
-	// 阶段 4: 输出统计结果
-	// 先 Stop spinner 清行，再让 dashboard 从干净的 stdout 行开始
+	// 阶段 4: 输出（scan 模式才印 dashboard；list 模式 handler 已在 stage 3 直接写 stdout）
 	spinner.Stop()
+	if handler != nil {
+		return nil
+	}
 	report := registry.Report()
 	return output.PrintReport(cfg, report, time.Since(start))
 }

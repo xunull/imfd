@@ -11,7 +11,7 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(scanCmd, infoCmd)
+	rootCmd.AddCommand(scanCmd, infoCmd, listCmd)
 }
 
 // Execute 是包对外的入口；由 main.go 调用

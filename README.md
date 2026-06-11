@@ -179,6 +179,111 @@ GPS
 | `-f`, `--format` | table | `table`（人读 section）/ `json`（marshal MediaRecord，snake_case）|
 | `-g`, `--geo-provider` | offline | GPS 反查方式：offline（离线中国城市表）/ nominatim（OSM 在线）|
 
+## 按条件查询 (list)
+
+`imfd list` 按 EXIF / GPS / 设备类型等条件挑出文件路径，pipe 友好。把 imfd 从「统计 / 查看」工具升格为「**可组合的 unix 媒体查询工具**」。
+
+```bash
+# 找出云南手机拍的照片，复制到目录做相册
+imfd list --type image --province 云南 --device phone ~/Pictures \
+  | xargs -d '\n' cp -t ~/yunnan-phone/
+
+# 找出 Sony 拍的 ISO > 1000 的图像
+imfd list --type image --camera-make Sony --iso ">1000" ~/Pictures
+
+# 找出 starry_sky 启发式匹配的星空照
+imfd list --type image --scene starry_sky ~/Pictures
+
+# 高阶组合查询用 expr-lang DSL
+imfd list --filter "province contains '云南' and device_type == 'phone' and capture_year >= 2024" ~/Pictures
+
+# NUL 分隔（filenames 含 \n 也安全）
+imfd list --camera-make Sony -0 ~/Pictures | xargs -0 wc -c
+
+# 统计某品牌照片数量
+imfd list --camera-make Nikon ~/Pictures | wc -l
+
+# pipe 到 imfd info 看详情
+imfd list --camera-make Sony ~/Pictures | head -3 | xargs -d '\n' imfd info
+```
+
+### list 字段
+
+DSL 表达式可用的字段（扁平 snake_case）：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `file_path` / `file_name` / `file_size` / `type` | str/str/int/str | 基础 |
+| `camera_make` / `camera_model` / `lens_make` / `lens_model` | str | EXIF |
+| `iso` / `aperture_value` / `shutter_seconds` / `focal_length_mm` | int / float | EXIF 数值（已 parse） |
+| `image_width` / `image_height` | int | 图像尺寸 |
+| `province` / `city` / `country` | str | GPS 反查后地点（中文） |
+| `capture_year` / `capture_hour` | int | 从 EXIF DateTimeOriginal 推导 |
+| `audio_codec` / `audio_bitrate` / `audio_sample_rate` | str / int / int | 音频 |
+| `video_codec` / `video_width` / `video_height` | str / int / int | 视频 |
+| `device_type` | str | `phone` / `camera` / `unknown`（基于 camera_make 内置映射） |
+| `scene_starry_sky` | bool | 启发式：iso>1600 AND shutter>10s AND 拍摄小时 ∈[22,4] |
+
+### list 常用 flag
+
+| flag | 说明 |
+|---|---|
+| `--type {image,video,audio,all}` | 默认 all；走 walker 层早期过滤减少 ffprobe 调用 |
+| `--camera-make`, `--camera-model` | 字符串 substring 匹配（case-insensitive）；可重复 → OR |
+| `--lens` | 镜头型号 substring；可重复 → OR |
+| `--device {phone,camera}` | 设备类别精确匹配 |
+| `--codec` | 编解码器 substring，**同时匹配音频和视频**；可重复 → OR |
+| `--audio-codec`, `--video-codec` | 单独指定音/视频 codec；可重复 → OR |
+| `--province`, `--city` | 字符串 substring；可重复 → OR |
+| `--scene starry_sky` | v1 唯一 scene 启发式 |
+| `--iso N`, `--iso ">N"`, `--iso "<N"`, `--iso "N-M"` | 数值 range 4 种语法 |
+| `--year N` / `--year ">=N"` / `--year "N-M"` | 同上 |
+| `--filter "expr"` | expr-lang DSL（高阶；和 flag 是 AND） |
+| `-0`, `--print0` | NUL 分隔（xargs -0 友好） |
+
+### list exit codes
+
+| code | 含义 |
+|---|---|
+| 0 | 成功（0 个结果也是 0；xargs 友好） |
+| 1 | IO 错误（路径不存在 / 权限拒绝） |
+| 2 | filter 语法错误（stderr 印 column） |
+
+### list DSL 语法
+
+`--filter` 是 [expr-lang/expr](https://expr-lang.org/) 语法。常用：
+
+- 比较：`==`、`!=`、`<`、`>`、`<=`、`>=`
+- 布尔：`and`、`or`、`not`
+- 字符串 substring：`field contains "X"`（**不是 `"X" in field`**）
+- 字符串 lowercase：`lower(field)` 
+- 集合 membership（精确匹配字段）：`type in ["image", "video"]`
+- 字符串字面量：**必须有引号**——`audio_codec == 'flac'` 或 `"flac"`。裸字 `flac` 会被当成字段名查 env
+
+**Shell 引号嵌套小技巧**：
+
+```bash
+# 推荐：外层单引号，shell 不解释里面任何字符
+imfd list --filter 'audio_codec == "flac"' ./dir
+
+# 也行：外层双引号，内层单引号
+imfd list --filter "audio_codec == 'flac'" ./dir
+```
+
+**但单字段精确匹配建议用 flag**（零引号、零 quote 嵌套）：
+
+```bash
+# 这个：
+imfd list --codec flac ./dir
+
+# 等价于：
+imfd list --filter 'audio_codec contains "flac" or video_codec contains "flac"' ./dir
+```
+
+DSL 留给**多字段复合查询**（`A and B or not C` 这种）。
+
+**nil-safe**：缺字段的比较自动返回 false（如 audio 文件没 EXIF，`iso > 800` 不命中、不报错）。
+
 ### 命令参数
 
 | 参数 | 简写 | 默认值 | 说明 |

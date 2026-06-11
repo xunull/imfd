@@ -3,6 +3,7 @@ module github.com/xunull/imfd
 go 1.25.0
 
 require (
+	github.com/expr-lang/expr v1.17.8
 	github.com/jedib0t/go-pretty/v6 v6.7.8
 	github.com/panjf2000/ants/v2 v2.11.5
 	github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd
