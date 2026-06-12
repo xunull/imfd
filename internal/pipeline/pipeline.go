@@ -2,11 +2,13 @@ package pipeline
 
 import (
 	"fmt"
+	"os"
 	"slices"
 	"sync"
 	"time"
 
 	"github.com/panjf2000/ants/v2"
+	"github.com/xunull/imfd/internal/cache"
 	"github.com/xunull/imfd/internal/config"
 	"github.com/xunull/imfd/internal/extract"
 	"github.com/xunull/imfd/internal/geo"
@@ -29,6 +31,23 @@ func Run(cfg *config.Config) error {
 // stage 3 单点串行 goroutine（stdout 顺序写入天然安全）。
 func RunWithHandler(cfg *config.Config, handler RecordHandler) error {
 	start := time.Now()
+
+	// 打开 cache（cfg.NoCache=true 时跳过；打开失败时降级为无 cache 模式）
+	var c *cache.Cache
+	if !cfg.NoCache {
+		dir := cfg.CacheDir
+		if dir == "" {
+			dir = cache.DefaultDir()
+		}
+		var err error
+		c, err = cache.Open(dir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: cache 不可用，降级为无 cache 模式: %v\n", err)
+		}
+		if c != nil {
+			defer c.Close()
+		}
+	}
 
 	// 启动 stderr spinner（无 TTY / NO_COLOR / IMFD_NO_SPINNER 时是 no-op）
 	spinner := output.NewSpinner(nil)
@@ -85,7 +104,7 @@ func RunWithHandler(cfg *config.Config, handler RecordHandler) error {
 		if err != nil {
 			fmt.Printf("警告: 创建提取池失败，将使用串行提取: %v\n", err)
 			for filePath := range fileCh {
-				record := extractAndResolve(filePath, resolver)
+				record := extractAndResolve(filePath, resolver, c)
 				recordCh <- record
 			}
 			close(recordCh)
@@ -100,14 +119,14 @@ func RunWithHandler(cfg *config.Config, handler RecordHandler) error {
 			fp := filePath
 			err := extractPool.Submit(func() {
 				defer extractWg.Done()
-				record := extractAndResolve(fp, resolver)
+				record := extractAndResolve(fp, resolver, c)
 				spinner.IncExtracted()
 				recordCh <- record
 			})
 			if err != nil {
 				extractWg.Done()
 				// 池满时同步执行
-				record := extractAndResolve(fp, resolver)
+				record := extractAndResolve(fp, resolver, c)
 				spinner.IncExtracted()
 				recordCh <- record
 			}
@@ -147,20 +166,41 @@ func RunWithHandler(cfg *config.Config, handler RecordHandler) error {
 	return output.PrintReport(cfg, report, time.Since(start))
 }
 
-// extractAndResolve 提取媒体信息并做地理反查
-// resolver 可能为 nil（scan audio/video 时不初始化）；此时跳过 GPS 反查
-func extractAndResolve(filePath string, resolver geo.GeoResolver) *media.MediaRecord {
-	record := extract.Extract(filePath)
+// extractAndResolve 提取媒体信息并做地理反查。
+// c 为 nil 时跳过 cache（--no-cache 或 cache 打开失败时）。
+// resolver 可能为 nil（scan audio/video 时不初始化）；此时跳过 GPS 反查。
+func extractAndResolve(filePath string, resolver geo.GeoResolver, c *cache.Cache) *media.MediaRecord {
+	// Cache 查找：用 os.Stat 取 mtime_ns 作为 key（与 extract 内部 stat 是两次调用，
+	// stat ~1μs，相比提取 ~100ms 可忽略不计）
+	if c != nil {
+		if fi, err := os.Stat(filePath); err == nil {
+			mtimeNs := fi.ModTime().UnixNano()
+			if record, ok := c.Get(filePath, mtimeNs); ok {
+				resolveGPS(record, resolver)
+				return record
+			}
+		}
+	}
 
-	// 对有 GPS 信息的记录做地理反查
+	record := extract.Extract(filePath)
+	resolveGPS(record, resolver)
+
+	// 只缓存成功记录；用 record.ModTime（extract 已 stat）作为 key，避免额外 stat
+	if c != nil && record.Error == nil && !record.ModTime.IsZero() {
+		_ = c.Set(filePath, record.ModTime.UnixNano(), record)
+	}
+
+	return record
+}
+
+// resolveGPS 对有 GPS 坐标的图像做地理反查（offline 内存查表 ~0ms）
+func resolveGPS(record *media.MediaRecord, resolver geo.GeoResolver) {
 	if resolver != nil && record.HasGPS() {
 		loc, err := resolver.Resolve(record.Exif.GPS.Latitude, record.Exif.GPS.Longitude)
 		if err == nil {
 			record.Location = loc
 		}
 	}
-
-	return record
 }
 
 // needsGeoResolver 判断当前 scan 类型是否需要初始化 GPS 反查器

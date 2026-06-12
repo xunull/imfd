@@ -30,6 +30,7 @@ var (
 	flagListVideoCodecs  []string
 	flagListFilter       string
 	flagListPrint0       bool
+	flagListNoCache      bool
 	flagListWorkers      int
 	flagListExtractors   int
 	flagListChannelSize  int
@@ -82,6 +83,7 @@ func init() {
 	listCmd.Flags().StringVar(&flagListYear, "year", "", "拍摄年份: N | >=N | N-M")
 	listCmd.Flags().StringVarP(&flagListFilter, "filter", "f", "", "expr-lang DSL filter（高阶；和 flag 是 AND）")
 	listCmd.Flags().BoolVarP(&flagListPrint0, "print0", "0", false, "用 NUL 分隔输出（xargs -0 友好）")
+	listCmd.Flags().BoolVar(&flagListNoCache, "no-cache", false, "跳过 cache 读写（强制重新提取）")
 	listCmd.Flags().IntVarP(&flagListWorkers, "workers", "w", 8, "目录遍历并发数")
 	listCmd.Flags().IntVarP(&flagListExtractors, "extractors", "e", 0, "媒体提取并发数（默认 CPU*5）")
 	listCmd.Flags().IntVar(&flagListChannelSize, "channel-size", 1024, "内部通道缓冲")
@@ -161,6 +163,7 @@ func runList(paths []string, stdout, stderr io.Writer) error {
 			ChannelSize: flagListChannelSize,
 			GeoProvider: flagListGeoProvider,
 			MediaTypes:  parseTypeFilter(flagListType),
+			NoCache:     flagListNoCache,
 		}
 		if err := cfg.Validate(); err != nil {
 			return err

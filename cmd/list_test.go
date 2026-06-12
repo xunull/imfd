@@ -23,6 +23,7 @@ func resetListFlags(t *testing.T) {
 	flagListYear = ""
 	flagListFilter = ""
 	flagListPrint0 = false
+	flagListNoCache = true // 测试不依赖 cache；隔离副作用
 	flagListWorkers = 8
 	flagListExtractors = 0
 	flagListChannelSize = 1024

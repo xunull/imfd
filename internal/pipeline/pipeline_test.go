@@ -34,6 +34,7 @@ func TestRunWithHandler_CustomHandlerCollectsRecords(t *testing.T) {
 		Extractors:  2,
 		ChannelSize: 16,
 		GeoProvider: "offline",
+		NoCache:     true, // smoke test — cache tested in internal/cache
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
@@ -61,6 +62,7 @@ func TestRun_BackwardCompatible(t *testing.T) {
 		ChannelSize:  16,
 		GeoProvider:  "offline",
 		OutputFormat: config.FormatJSON, // 走 JSON 路径避免 dashboard stdout 写入测试日志
+		NoCache:      true,              // smoke test — cache tested in internal/cache
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)

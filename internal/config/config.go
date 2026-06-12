@@ -49,6 +49,13 @@ type Config struct {
 	// LegacyTable 控制是否走老的 go-pretty 表格输出（迁移逃生口）
 	// 默认 false：走新 dashboard
 	LegacyTable bool
+
+	// NoCache 为 true 时跳过 cache 读写（--no-cache flag）。
+	// 默认 false = cache 透明启用。
+	NoCache bool
+
+	// CacheDir 指定 cache DB 的目录；空字符串时 pipeline 使用 cache.DefaultDir()。
+	CacheDir string
 }
 
 // Validate 校验配置合法性，并对未指定的参数填充动态默认值

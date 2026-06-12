@@ -19,6 +19,7 @@ var (
 	flagGeoProvider  string
 	flagVerbose      bool
 	flagLegacyTable  bool
+	flagScanNoCache  bool
 )
 
 // scanRunner 是 pipeline.Run 的接缝，便于在测试里注入 fake runner
@@ -87,6 +88,7 @@ func init() {
 	scanCmd.PersistentFlags().StringVarP(&flagGeoProvider, "geo-provider", "g", "offline", "GPS 反查方式: offline(离线), nominatim(OpenStreetMap在线)")
 	scanCmd.PersistentFlags().BoolVarP(&flagVerbose, "verbose", "v", false, "展开全 Unknown 的维度（默认折叠）")
 	scanCmd.PersistentFlags().BoolVar(&flagLegacyTable, "legacy-table", false, "使用旧版 go-pretty 表格输出（默认: dashboard）")
+	scanCmd.PersistentFlags().BoolVar(&flagScanNoCache, "no-cache", false, "跳过 cache 读写（强制重新提取）")
 
 	scanCmd.AddCommand(scanAllCmd, scanAudioCmd, scanImageCmd, scanVideoCmd)
 }
@@ -116,6 +118,7 @@ func runScanWithTypes(args []string, mediaTypes []media.MediaType) error {
 		MediaTypes:   mediaTypes,
 		Verbose:      flagVerbose,
 		LegacyTable:  flagLegacyTable,
+		NoCache:      flagScanNoCache,
 	}
 
 	if err := cfg.Validate(); err != nil {
