@@ -294,12 +294,55 @@ DSL 留给**多字段复合查询**（`A and B or not C` 这种）。
 | `--format` | `-f` | `table` | 输出格式: table, json, both |
 | `--channel-size` | | `1024` | 内部通道缓冲大小 |
 
+## 元数据 Cache
+
+imfd 内置 SQLite cache，首次扫描后将 EXIF/音视频元数据写入本地数据库，后续对同一目录的 `scan`/`list` 调用无需重新启动 ExifTool/FFprobe，速度提升 10-100x。
+
+**Cache 透明工作**，无需配置：文件 mtime 未变 → 命中缓存；文件修改/新增 → 自动失效并重新提取。
+
+### 查看 cache 状态
+
+```bash
+imfd cache stats
+# Cache DB:  /Users/q/.cache/imfd/cache.db
+# Entries:   12,847
+# Size:      42.3 MB
+# Oldest:    2025-12-01 (192 days ago)
+```
+
+### 清理 cache
+
+```bash
+# 删除 90 天未访问的旧条目（推荐定期执行）
+imfd cache clean --older-than 90d
+
+# 清空全部
+imfd cache clear
+```
+
+### 跳过 cache
+
+```bash
+# 强制重新提取（调试 / 元数据更新后验证）
+imfd scan --no-cache ~/Pictures
+imfd list --no-cache --province 云南 ~/Pictures
+```
+
+### Cache 位置
+
+| 环境 | 路径 |
+|------|------|
+| 默认 | `~/.cache/imfd/cache.db` |
+| 自定义 | 设置 `XDG_CACHE_HOME` 环境变量 |
+
+---
+
 ## 架构设计
 
 ### 并发流水线
 
 ```
-目录并行遍历 (ants pool) → 文件通道 → 并行媒体提取 (ants pool) → 记录通道 → 单点聚合 → 报告输出
+目录并行遍历 (ants pool) → 文件通道 → 并行媒体提取 (ants pool / cache hit) → 记录通道 → 单点聚合 → 报告输出
 ```
 
 ### 可扩展统计维度
