@@ -89,11 +89,11 @@ func TestSpinner_RenderShowsCounts(t *testing.T) {
 	h.IncExtracted()
 	h.Spinner.render(0)
 	out := h.output()
-	if !bytes.Contains([]byte(out), []byte("3 files")) {
-		t.Errorf("want '3 files' in render output, got %q", out)
+	if !bytes.Contains([]byte(out), []byte("3")) {
+		t.Errorf("want scanned count '3' in render output, got %q", out)
 	}
 	if !bytes.Contains([]byte(out), []byte("1 extracted")) {
-		t.Errorf("want '1 extracted', got %q", out)
+		t.Errorf("want '1 extracted' in render output, got %q", out)
 	}
 }
 

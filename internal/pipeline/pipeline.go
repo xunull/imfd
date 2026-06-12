@@ -3,6 +3,7 @@ package pipeline
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"sync"
 	"time"
@@ -119,14 +120,18 @@ func RunWithHandler(cfg *config.Config, handler RecordHandler) error {
 			fp := filePath
 			err := extractPool.Submit(func() {
 				defer extractWg.Done()
+				spinner.SetCurrent(filepath.Base(fp))
 				record := extractAndResolve(fp, resolver, c)
+				spinner.SetCurrent("")
 				spinner.IncExtracted()
 				recordCh <- record
 			})
 			if err != nil {
 				extractWg.Done()
 				// 池满时同步执行
+				spinner.SetCurrent(filepath.Base(fp))
 				record := extractAndResolve(fp, resolver, c)
+				spinner.SetCurrent("")
 				spinner.IncExtracted()
 				recordCh <- record
 			}

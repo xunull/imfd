@@ -18,11 +18,12 @@ import (
 //   - braille 字符 ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏（10 帧）
 //   - 结束时 \r 清行，让 dashboard 输出从干净的行开始
 //
-// 计数原子，调用方在 walker / extract 路径上 IncFiles() / IncExtracted()。
+// 计数原子，调用方在 walker / extract 路径上 IncFiles() / IncExtracted() / SetCurrent()。
 type Spinner struct {
 	out       io.Writer
 	files     atomic.Int64
 	extracted atomic.Int64
+	current   atomic.Value // string: basename of file currently being extracted
 	stopCh    chan struct{}
 	doneCh    chan struct{}
 	enabled   bool
@@ -50,6 +51,10 @@ func (s *Spinner) IncFiles() { s.files.Add(1) }
 
 // IncExtracted 把"已完成提取的 record 数"+1，并发安全。
 func (s *Spinner) IncExtracted() { s.extracted.Add(1) }
+
+// SetCurrent 记录当前正在提取的文件名（basename），便于用户判断是慢还是卡死。
+// 并发安全；传空字符串清除显示。
+func (s *Spinner) SetCurrent(basename string) { s.current.Store(basename) }
 
 // Start 启动后台刷新 goroutine。enabled=false 时是 no-op。
 func (s *Spinner) Start() {
@@ -98,6 +103,21 @@ func (s *Spinner) loop() {
 func (s *Spinner) render(frame int) {
 	f := s.files.Load()
 	e := s.extracted.Load()
+	inFlight := f - e
+
+	cur, _ := s.current.Load().(string)
+	// 文件名截断：超过 32 字符时保留后 29 字符（最有辨识度的部分）
+	if len(cur) > 32 {
+		cur = "…" + cur[len(cur)-31:]
+	}
+
+	var suffix string
+	if inFlight > 0 && cur != "" {
+		suffix = fmt.Sprintf(" · %d in flight · %s", inFlight, cur)
+	} else if inFlight > 0 {
+		suffix = fmt.Sprintf(" · %d in flight", inFlight)
+	}
+
 	// \r 回到行首，\033[K 清到行末，避免上一帧残留
-	fmt.Fprintf(s.out, "\r\033[K%c scanned %d files · %d extracted...", spinnerFrames[frame], f, e)
+	fmt.Fprintf(s.out, "\r\033[K%c scanned %d · %d extracted%s", spinnerFrames[frame], f, e, suffix)
 }
