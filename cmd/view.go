@@ -258,13 +258,19 @@ func (h *symlinkHandler) link(r *media.MediaRecord) error {
 	if r.Error != nil {
 		return nil
 	}
-	name := filepath.Base(r.FilePath)
+	// symlink target must be absolute: relative paths are resolved from the
+	// symlink's directory (/tmp/imfd-view-xxx/), not the working directory.
+	src, err := filepath.Abs(r.FilePath)
+	if err != nil {
+		src = r.FilePath
+	}
+	name := filepath.Base(src)
 	if h.rename != "" {
 		name = applyViewTemplate(h.rename, r)
 	}
 	dst := uniqueSymlinkPath(h.viewDir, name)
-	if err := os.Symlink(r.FilePath, dst); err != nil {
-		return fmt.Errorf("创建 symlink 失败 (%s): %w", r.FilePath, err)
+	if err := os.Symlink(src, dst); err != nil {
+		return fmt.Errorf("创建 symlink 失败 (%s): %w", src, err)
 	}
 	h.count++
 	return nil

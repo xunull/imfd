@@ -370,6 +370,40 @@ func TestRunView_CreatesSymlinkInViewDir(t *testing.T) {
 	}
 }
 
+func TestRunView_SymlinkTargetIsAbsolute(t *testing.T) {
+	// Regression: symlink target must be absolute so Finder can open the file
+	// even though the symlink lives in /tmp/imfd-view-xxx/ far from cwd.
+	resetViewFlags(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "photo.jpg"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	origOpen := openDir
+	openDir = func(d string) error { return nil }
+	defer func() { openDir = origOpen }()
+	flagViewNoOpen = false
+
+	var stdout bytes.Buffer
+	if err := runView([]string{dir}, &stdout, &bytes.Buffer{}); err != nil {
+		t.Fatalf("runView: %v", err)
+	}
+
+	vDir := strings.TrimSpace(stdout.String())
+	entries, _ := os.ReadDir(vDir)
+	for _, e := range entries {
+		if e.Type()&os.ModeSymlink != 0 {
+			target, err := os.Readlink(filepath.Join(vDir, e.Name()))
+			if err != nil {
+				t.Fatalf("Readlink: %v", err)
+			}
+			if !filepath.IsAbs(target) {
+				t.Errorf("symlink target must be absolute, got %q", target)
+			}
+		}
+	}
+}
+
 func TestRunView_NoOpenFlag(t *testing.T) {
 	resetViewFlags(t) // flagViewNoOpen = true already
 	dir := t.TempDir()
