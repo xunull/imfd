@@ -19,6 +19,7 @@
 - 可扩展的维度统计框架，新增维度只需一个 `KeyExtractor` 函数（或用 `stats.NewFieldDimension` 工厂）
 - 使用 ants 协程池实现目录遍历与媒体提取的并行处理
 - 支持终端表格和 JSON 两种输出格式
+- 子命令矩阵：`scan`（聚合统计）/ `info`（单文件详情）/ `list`（按条件筛路径，pipe 友好）/ **`view`**（按条件在 Finder 弹虚拟视图，macOS）/ `cache`（管理元数据 cache）
 
 ## 安装
 
@@ -314,6 +315,78 @@ DSL 留给**多字段复合查询**（`A and B or not C` 这种）。
 | `--extractors` | `-e` | `16` | 媒体提取并发数 |
 | `--format` | `-f` | `table` | 输出格式: table, json, both |
 | `--channel-size` | | `1024` | 内部通道缓冲大小 |
+
+## 虚拟视图 (view) — 仅 macOS
+
+`imfd view` 是 `list` 的图形化对应物：用同样的筛选条件，把命中的文件以**符号链接**形式放进一个临时目录，自动用 Finder 打开。**原始文件零移动、零修改**——你看到的是「假目录」，里面的链接指回原始位置。
+
+```bash
+# 在 Finder 中弹出云南手机拍的照片（虚拟目录）
+imfd view --province 云南 --device phone ~/Pictures
+
+# 给 symlink 起有意义的名字（Finder 里直接看到日期+地点+相机）
+imfd view --province 云南 ~/Pictures --rename "{date}_{city}_{camera_make}.{ext}"
+
+# 不打开 Finder，只输出虚拟目录路径（脚本里用）
+imfd view --province 云南 ~/Pictures --no-open
+
+# 同一查询重复运行 → 同一虚拟目录（Finder 不会开新窗口，仅刷新内容）
+imfd view --province 云南 ~/Pictures
+imfd view --province 云南 ~/Pictures  # 命中已有 Finder 窗口
+```
+
+### view 重命名模板字段
+
+`--rename` 模板里可用的占位符：
+
+| 占位符 | 值 | 缺失时 |
+|---|---|---|
+| `{year}` / `{month}` / `{day}` | 拍摄日期分段（补零） | 回退到文件 mtime |
+| `{date}` | `2024-01-15` 快捷写法 | 同上 |
+| `{camera_make}` / `{camera_model}` | EXIF 相机品牌/型号 | `Unknown` |
+| `{city}` / `{province}` | GPS 反查地点 | `Unknown` |
+| `{type}` | `image` / `video` / `audio` | `unknown` |
+| `{iso}` | EXIF ISO | `0` |
+| `{ext}` | 原扩展名（小写） | 保持原样 |
+| `{filename}` | 原文件名去扩展名 | 保持原样 |
+
+文件名中的 `/`、`:`、`\0` 自动替换为 `_`，避免 macOS 文件系统报错。
+
+### view 常用 flag
+
+| flag | 说明 |
+|---|---|
+| `--rename "{tmpl}"` | symlink 重命名模板（默认保留原文件名） |
+| `--no-open` | 不调用 macOS `open` 启动 Finder；改向 stdout 输出目录路径 |
+| `--no-cache` | 跳过元数据 cache，强制重新提取 |
+| 过滤 flag（`--type` / `--camera-make` / `--province` / `--filter` 等） | 与 `imfd list` **完全相同**，复用同一筛选引擎 |
+
+### view 工作原理
+
+```
+imfd view --province 云南 ~/Pictures
+        │
+        ├─ 计算 FNV-32 hash(filter_expr + sorted(abs_paths))
+        │
+        ├─ /tmp/imfd-view-a3f7b2/  ← 同查询同目录
+        │     ├─ DSC_0001.JPG → /Users/q/Pictures/2024/DSC_0001.JPG
+        │     ├─ DSC_0042.JPG → /Users/q/Pictures/2024/raw/DSC_0042.JPG
+        │     └─ ...
+        │
+        └─ open /tmp/imfd-view-a3f7b2/   ← Finder 在此聚焦
+```
+
+- **生命周期**：临时目录在 `$TMPDIR`（macOS 默认 `/var/folders/...`），系统重启后自动清理；同一查询重复运行只刷新 symlink，不会泄漏旧目录。
+- **碰撞处理**：跨子目录有同名文件时自动加 `_1`、`_2` 后缀。
+- **symlink target 是绝对路径**：用 Finder 直接打开链接也能找到原始文件（无论你之后在哪个目录运行 imfd）。
+- **`cleanOldSymlinks` 只清理 symlink**：你手动放进虚拟目录的普通文件（笔记、对比图）不会被删。
+
+### view 平台支持
+
+| 平台 | 状态 |
+|---|---|
+| macOS | ✅ 支持（依赖 `open` 命令 + Finder） |
+| Linux / Windows | ❌ 暂不支持（exit 2）；请用 `imfd list` 配合各家文件管理器 |
 
 ## 元数据 Cache
 
