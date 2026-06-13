@@ -19,7 +19,7 @@
 - 可扩展的维度统计框架，新增维度只需一个 `KeyExtractor` 函数（或用 `stats.NewFieldDimension` 工厂）
 - 使用 ants 协程池实现目录遍历与媒体提取的并行处理
 - 支持终端表格和 JSON 两种输出格式
-- 子命令矩阵：`scan`（聚合统计）/ `info`（单文件详情）/ `list`（按条件筛路径，pipe 友好）/ **`view`**（按条件在 Finder 弹虚拟视图，macOS）/ `cache`（管理元数据 cache）
+- 子命令矩阵：`scan`（聚合统计）/ `info`（单文件详情）/ `list`（按条件筛路径，pipe 友好）/ **`view`**（按条件在 Finder 或指定 app 中弹虚拟视图）/ `cache`（管理元数据 cache）
 
 ## 安装
 
@@ -316,18 +316,27 @@ DSL 留给**多字段复合查询**（`A and B or not C` 这种）。
 | `--format` | `-f` | `table` | 输出格式: table, json, both |
 | `--channel-size` | | `1024` | 内部通道缓冲大小 |
 
-## 虚拟视图 (view) — 仅 macOS
+## 虚拟视图 (view)
 
-`imfd view` 是 `list` 的图形化对应物：用同样的筛选条件，把命中的文件以**符号链接**形式放进一个临时目录，自动用 Finder 打开。**原始文件零移动、零修改**——你看到的是「假目录」，里面的链接指回原始位置。
+`imfd view` 是 `list` 的图形化对应物：用同样的筛选条件，把命中的文件以**符号链接**形式放进一个临时目录，默认在 Finder 打开。也可以用 `--exec` 把虚拟目录交给任意 app（Lightroom / Photos / 文件管理器）。**原始文件零移动、零修改**——你看到的是「假目录」，里面的链接指回原始位置。
 
 ```bash
-# 在 Finder 中弹出云南手机拍的照片（虚拟目录）
+# 在 Finder 中弹出云南手机拍的照片（虚拟目录，macOS）
 imfd view --province 云南 --device phone ~/Pictures
 
-# 给 symlink 起有意义的名字（Finder 里直接看到日期+地点+相机）
-imfd view --province 云南 ~/Pictures --rename "{date}_{city}_{camera_make}.{ext}"
+# 在 Lightroom 中打开虚拟视图（虚拟目录直接进 Lightroom）
+imfd view --province 云南 ~/Pictures --exec "open -a 'Adobe Lightroom Classic'"
 
-# 不打开 Finder，只输出虚拟目录路径（脚本里用）
+# 重命名 + Lightroom（导入时直接看到日期+地点+相机的文件名）
+imfd view --province 云南 ~/Pictures \
+    --rename "{date}_{city}_{camera_make}.{ext}" \
+    --exec "open -a 'Adobe Lightroom Classic'"
+
+# Linux 用户：用自己的文件管理器
+imfd view --province 云南 ~/Pictures --exec nautilus
+imfd view --province 云南 ~/Pictures --exec thunar
+
+# 不打开任何 app，只输出虚拟目录路径（脚本里用）
 imfd view --province 云南 ~/Pictures --no-open
 
 # 同一查询重复运行 → 同一虚拟目录（Finder 不会开新窗口，仅刷新内容）
@@ -357,9 +366,17 @@ imfd view --province 云南 ~/Pictures  # 命中已有 Finder 窗口
 | flag | 说明 |
 |---|---|
 | `--rename "{tmpl}"` | symlink 重命名模板（默认保留原文件名） |
-| `--no-open` | 不调用 macOS `open` 启动 Finder；改向 stdout 输出目录路径 |
+| `--exec "<cmd>"` | 执行命令，虚拟目录作为最后一个参数追加（隐含 `--no-open`）。例: `--exec "open -a 'Adobe Lightroom'"` 或 `--exec nautilus` |
+| `--no-open` | 不打开 Finder，只把虚拟目录路径输出到 stdout |
 | `--no-cache` | 跳过元数据 cache，强制重新提取 |
 | 过滤 flag（`--type` / `--camera-make` / `--province` / `--filter` 等） | 与 `imfd list` **完全相同**，复用同一筛选引擎 |
+
+**`--exec` 行为细节**：
+
+- 实现等价 `sh -c "<cmd> <viewDir-shell-quoted>"`，所以可以用 shell 引号嵌套、环境变量、`&&` 等
+- 虚拟目录追加在命令末尾（类似 `find -exec ... {} +` / `xargs`）
+- 用户命令的退出码会传播：`imfd view --exec false; echo $?` 输出 `1`
+- 0 个文件匹配时不执行（无意义）
 
 ### view 工作原理
 
@@ -383,10 +400,13 @@ imfd view --province 云南 ~/Pictures
 
 ### view 平台支持
 
-| 平台 | 状态 |
-|---|---|
-| macOS | ✅ 支持（依赖 `open` 命令 + Finder） |
-| Linux / Windows | ❌ 暂不支持（exit 2）；请用 `imfd list` 配合各家文件管理器 |
+| 平台 | 默认（开 Finder） | `--exec <cmd>` | `--no-open` |
+|---|---|---|---|
+| macOS | ✅ | ✅ | ✅ |
+| Linux | ❌ exit 2 | ✅（用 nautilus/thunar/krusader 等） | ✅ |
+| Windows | ❌ exit 2 | ✅（理论上；未在 Windows 上测） | ✅ |
+
+只有「默认动作 = 打开 Finder」依赖 macOS 的 `open` 命令。指定 `--exec` 或 `--no-open` 时，view 在任何平台上都能工作。
 
 ## 元数据 Cache
 

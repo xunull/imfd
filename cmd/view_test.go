@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,6 +35,7 @@ func resetViewFlags(t *testing.T) {
 	flagViewFilter = ""
 	flagViewRename = ""
 	flagViewNoOpen = true // always skip Finder in tests
+	flagViewExec = ""
 	flagViewNoCache = true
 	flagViewWorkers = 2
 	flagViewExtractors = 2
@@ -260,6 +263,11 @@ func TestSanitizeFilename_SlashReplaced(t *testing.T) {
 
 func TestRunView_NonMacReturnsError(t *testing.T) {
 	resetViewFlags(t)
+	// Reset defaults flagViewNoOpen=true (which bypasses the guard).
+	// To hit the guard, force the *default* action (open Finder) by clearing
+	// both bypass flags. Then move to linux to trigger the rejection.
+	flagViewNoOpen = false
+	flagViewExec = ""
 	origOS := currentOS
 	currentOS = "linux"
 	defer func() { currentOS = origOS }()
@@ -274,6 +282,27 @@ func TestRunView_NonMacReturnsError(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "error:") {
 		t.Errorf("stderr should contain 'error:': %q", stderr.String())
+	}
+}
+
+// TestRunView_NoOpenBypassesGuardOnNonMac proves --no-open lets Linux/Windows
+// users run `imfd view --no-open` for path-output-only workflows.
+func TestRunView_NoOpenBypassesGuardOnNonMac(t *testing.T) {
+	resetViewFlags(t)
+	// resetViewFlags already sets flagViewNoOpen = true
+	origOS := currentOS
+	currentOS = "linux"
+	defer func() { currentOS = origOS }()
+
+	dir := makeFakeMediaDir(t)
+
+	var stdout, stderr bytes.Buffer
+	err := runView([]string{dir}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("--no-open on linux should NOT return ErrMacOSOnly: %v", err)
+	}
+	if strings.TrimSpace(stdout.String()) == "" {
+		t.Error("stdout should contain the view dir path")
 	}
 }
 
@@ -493,5 +522,191 @@ func TestRunView_SameQuerySameViewDir(t *testing.T) {
 	d2 := strings.TrimSpace(out2.String())
 	if d1 != d2 {
 		t.Errorf("same query should produce same view dir:\n  run1=%s\n  run2=%s", d1, d2)
+	}
+}
+
+// --- runView: --exec ---
+
+// makeFakeMediaDir creates a temp dir with one fake media file and returns the dir path.
+func makeFakeMediaDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "photo.jpg"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func TestRunView_Exec_HappyPath(t *testing.T) {
+	// --exec runs the user command with view dir as last arg.
+	resetViewFlags(t)
+	dir := makeFakeMediaDir(t)
+	flagViewExec = "echo"
+	flagViewNoOpen = false // ensure default Finder path is NOT chosen
+
+	// Intercept execUserCmd to capture what would have been run.
+	var capturedCmd, capturedDir string
+	origExec := execUserCmd
+	execUserCmd = func(userCmd, viewDir string, _, _ io.Writer) error {
+		capturedCmd = userCmd
+		capturedDir = viewDir
+		return nil
+	}
+	defer func() { execUserCmd = origExec }()
+
+	var stdout, stderr bytes.Buffer
+	if err := runView([]string{dir}, &stdout, &stderr); err != nil {
+		t.Fatalf("runView: %v\nstderr: %s", err, stderr.String())
+	}
+
+	if capturedCmd != "echo" {
+		t.Errorf("captured user cmd: got %q, want %q", capturedCmd, "echo")
+	}
+	vDir := strings.TrimSpace(stdout.String())
+	if capturedDir != vDir {
+		t.Errorf("execUserCmd viewDir: got %q, want %q (the stdout-printed view dir)", capturedDir, vDir)
+	}
+}
+
+func TestRunView_Exec_DoesNotCallOpenDir(t *testing.T) {
+	// --exec replaces Finder; openDir must NOT be called.
+	resetViewFlags(t)
+	dir := makeFakeMediaDir(t)
+	flagViewExec = "true"
+	flagViewNoOpen = false
+
+	openCalled := false
+	origOpen := openDir
+	openDir = func(d string) error { openCalled = true; return nil }
+	defer func() { openDir = origOpen }()
+
+	execCalled := false
+	origExec := execUserCmd
+	execUserCmd = func(_, _ string, _, _ io.Writer) error { execCalled = true; return nil }
+	defer func() { execUserCmd = origExec }()
+
+	var stdout, stderr bytes.Buffer
+	if err := runView([]string{dir}, &stdout, &stderr); err != nil {
+		t.Fatalf("runView: %v", err)
+	}
+
+	if openCalled {
+		t.Error("openDir should NOT be called when --exec is set")
+	}
+	if !execCalled {
+		t.Error("execUserCmd should be called when --exec is set")
+	}
+}
+
+func TestRunView_Exec_PropagatesUserCmdError(t *testing.T) {
+	// User command's non-zero exit propagates as runView error.
+	resetViewFlags(t)
+	dir := makeFakeMediaDir(t)
+	flagViewExec = "false"
+	flagViewNoOpen = false
+
+	execErr := errors.New("user cmd exit 7")
+	origExec := execUserCmd
+	execUserCmd = func(_, _ string, _, _ io.Writer) error { return execErr }
+	defer func() { execUserCmd = origExec }()
+
+	var stdout, stderr bytes.Buffer
+	err := runView([]string{dir}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("expected error from failing user cmd")
+	}
+	if !errors.Is(err, execErr) {
+		t.Errorf("error chain should wrap user cmd error, got %v", err)
+	}
+}
+
+func TestRunView_Exec_UnlocksNonMac(t *testing.T) {
+	// On non-darwin, --exec bypasses the platform guard.
+	resetViewFlags(t)
+	currentOS = "linux" // override the reset's darwin force
+	dir := makeFakeMediaDir(t)
+	flagViewExec = "true"
+	flagViewNoOpen = false
+
+	origExec := execUserCmd
+	execUserCmd = func(_, _ string, _, _ io.Writer) error { return nil }
+	defer func() { execUserCmd = origExec }()
+
+	var stdout, stderr bytes.Buffer
+	err := runView([]string{dir}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("--exec on linux should NOT return ErrMacOSOnly: %v\nstderr: %s", err, stderr.String())
+	}
+	if errors.Is(err, ErrMacOSOnly) {
+		t.Error("ErrMacOSOnly should not fire when --exec is provided")
+	}
+}
+
+func TestRunView_Exec_NoOpAtZeroMatches(t *testing.T) {
+	// 0 matches → don't run --exec (nothing to open).
+	resetViewFlags(t)
+	dir := t.TempDir() // empty dir, 0 media files
+	flagViewExec = "echo"
+	flagViewNoOpen = false
+
+	execCalled := false
+	origExec := execUserCmd
+	execUserCmd = func(_, _ string, _, _ io.Writer) error { execCalled = true; return nil }
+	defer func() { execUserCmd = origExec }()
+
+	var stdout, stderr bytes.Buffer
+	if err := runView([]string{dir}, &stdout, &stderr); err != nil {
+		t.Fatalf("0-match runView: %v", err)
+	}
+	if execCalled {
+		t.Error("execUserCmd should NOT be called when 0 files matched")
+	}
+	if !strings.Contains(stderr.String(), "0 files matched") {
+		t.Errorf("stderr should mention 0 matches, got %q", stderr.String())
+	}
+}
+
+// TestExecUserCmdReal verifies the real execUserCmd helper actually invokes
+// sh -c and appends the viewDir as the final shell-quoted arg. Strategy:
+// the user cmd is a sh function that writes its last arg to a probe file.
+// We then read the probe and assert it equals viewDir.
+func TestExecUserCmdReal(t *testing.T) {
+	tmp := t.TempDir()
+	probe := filepath.Join(tmp, "probe")
+	// Probe a viewDir containing both a space and a single quote — exercises
+	// the shellQuote escape path end-to-end.
+	trickyViewDir := tmp + "/has space and 'quote'"
+
+	// sh -c invocation: the trailing arg becomes $1 inside the for-loop;
+	// we shift through all args and write the LAST one to probe.
+	// (Robust against future implementations that might pass extra args.)
+	userCmd := `last=""; for x in "$@"; do last="$x"; done; printf '%s' "$last" > ` + probe
+	if err := execUserCmd(userCmd, trickyViewDir, io.Discard, io.Discard); err != nil {
+		t.Fatalf("execUserCmd: %v", err)
+	}
+	got, err := os.ReadFile(probe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != trickyViewDir {
+		t.Errorf("probe content: got %q, want %q", string(got), trickyViewDir)
+	}
+}
+
+// TestShellQuote sanity-checks the escape rules for the only edge cases
+// we care about: spaces and embedded single quotes.
+func TestShellQuote(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"plain", "'plain'"},
+		{"has space", "'has space'"},
+		{"with'quote", `'with'\''quote'`},
+		{"", "''"},
+	}
+	for _, c := range cases {
+		if got := shellQuote(c.in); got != c.want {
+			t.Errorf("shellQuote(%q): got %q, want %q", c.in, got, c.want)
+		}
 	}
 }

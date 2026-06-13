@@ -36,6 +36,7 @@ var (
 	flagViewFilter       string
 	flagViewRename       string
 	flagViewNoOpen       bool
+	flagViewExec         string
 	flagViewNoCache      bool
 	flagViewWorkers      int
 	flagViewExtractors   int
@@ -43,9 +44,11 @@ var (
 	flagViewGeoProvider  string
 )
 
-// ErrMacOSOnly is returned when view is run on a non-macOS platform.
-// RunE detects it and calls os.Exit(2) so runView itself is fully testable.
-var ErrMacOSOnly = errors.New("imfd view 目前仅支持 macOS（Windows/Linux 请使用 imfd list 配合文件管理器）")
+// ErrMacOSOnly is returned when view is run on a non-macOS platform AND no
+// alternative action was specified (--no-open or --exec). With --exec the user
+// supplies the command, so the macOS-only restriction lifts: Linux users can
+// pass --exec nautilus/thunar/krusader to open their own file manager.
+var ErrMacOSOnly = errors.New("imfd view 默认动作（打开 Finder）仅支持 macOS；Linux/Windows 用户请加 --exec <文件管理器> 或 --no-open")
 
 // currentOS is a var (not const) so tests can override it.
 var currentOS = runtime.GOOS
@@ -55,23 +58,64 @@ var openDir = func(dir string) error {
 	return exec.Command("open", dir).Run()
 }
 
+// execUserCmd runs the --exec command string and appends the view dir as the
+// last argument. Uses sh -c so the user gets full shell semantics: quoted
+// args, env vars, pipes, redirects. The view dir is single-quote-escaped
+// before append so an exotic TMPDIR (with spaces / quotes) can't break parsing.
+//
+// Why append and not $0/$1 reference: appending mirrors how `find -exec ... {}`
+// and `xargs` behave by default — the path goes at the end. Simple and matches
+// 99% of cases (`open -a App`, `nautilus`, `convert ... output/`). Users who
+// need the path elsewhere can wrap their own: --exec "sh -c 'do-thing \"$1\" foo' --"
+//
+// Injectable so tests can intercept without spawning subprocesses.
+var execUserCmd = func(userCmd, viewDir string, stdout, stderr io.Writer) error {
+	quoted := shellQuote(viewDir)
+	c := exec.Command("sh", "-c", userCmd+" "+quoted)
+	c.Stdout = stdout
+	c.Stderr = stderr
+	c.Stdin = os.Stdin
+	return c.Run()
+}
+
+// shellQuote wraps s in single quotes, escaping any single quotes inside.
+// POSIX shell rule: '...' is a literal string except '. To embed ' we close
+// the quote, add \', and reopen: foo'bar → 'foo'\''bar'.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
 // viewRunner is the injection seam (same pattern as scanRunner / listRunner).
 var viewRunner = runView
 
 var viewCmd = &cobra.Command{
 	Use:   "view [path...]",
-	Short: "按条件筛选媒体文件并在 Finder 中打开虚拟视图（仅 macOS）",
-	Long: `view 在系统临时目录下创建符号链接虚拟目录，通过 Finder 查看筛选结果。
+	Short: "按条件筛选媒体文件，创建虚拟视图目录并在 Finder 或指定 app 中打开",
+	Long: `view 在系统临时目录下创建符号链接虚拟目录。默认在 Finder 中打开（macOS），
+也可用 --exec 把目录交给任意命令（Lightroom / Photos.app / 文件管理器等）。
 
 原始文件不会被移动或修改。同一查询条件生成同一虚拟目录（重复运行刷新内容）。
 关闭 Finder 窗口或重启后虚拟目录自动消失。
 
 示例：
+  # 默认：在 Finder 打开虚拟视图（macOS）
   imfd view --province 云南 ~/Pictures
-  imfd view --device phone --year 2024 ~/Photos --rename "{date}_{city}.{ext}"
+
+  # 在 Lightroom 中打开虚拟视图
+  imfd view --province 云南 ~/Pictures --exec "open -a 'Adobe Lightroom Classic'"
+
+  # Linux 用户用自己的文件管理器
+  imfd view --province 云南 ~/Pictures --exec nautilus
+
+  # 重命名 + 在 Lightroom 打开（Finder 里直接看到日期+地点）
+  imfd view --device phone --year 2024 ~/Photos \
+      --rename "{date}_{city}.{ext}" \
+      --exec "open -a 'Adobe Lightroom Classic'"
+
+  # 只输出目录路径，不打开任何 app
   imfd view --filter "iso > 1600" ~/Photos --no-open
 
-仅支持 macOS。Windows / Linux 用户请使用 imfd list 输出路径配合文件管理器。`,
+默认（不带 --exec / --no-open）仅 macOS 支持（依赖 'open' 命令打开 Finder）。`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -100,6 +144,7 @@ func init() {
 	viewCmd.Flags().StringVarP(&flagViewFilter, "filter", "f", "", "expr-lang DSL（和 flag 是 AND）")
 	viewCmd.Flags().StringVar(&flagViewRename, "rename", "", `symlink 重命名模板，例: "{date}_{city}.{ext}"（默认保留原文件名）`)
 	viewCmd.Flags().BoolVar(&flagViewNoOpen, "no-open", false, "只建 symlink，不打开 Finder（输出目录路径到 stdout）")
+	viewCmd.Flags().StringVar(&flagViewExec, "exec", "", `执行命令并把视图目录作为最后一个参数，例: --exec "open -a 'Adobe Lightroom Classic'"（隐含 --no-open）`)
 	viewCmd.Flags().BoolVar(&flagViewNoCache, "no-cache", false, "跳过 cache 读写（强制重新提取）")
 	viewCmd.Flags().IntVarP(&flagViewWorkers, "workers", "w", 8, "目录遍历并发数")
 	viewCmd.Flags().IntVarP(&flagViewExtractors, "extractors", "e", 0, "媒体提取并发数（默认 CPU*5）")
@@ -108,8 +153,15 @@ func init() {
 }
 
 // runView is the testable core of the view command.
+//
+// Platform guard rationale:
+//   - Default action = open Finder via macOS 'open' → macOS-only.
+//   - --no-open = just print path → works anywhere.
+//   - --exec = user supplies command → works anywhere (Linux users pass nautilus/thunar).
+//
+// So the guard fires only when none of the bypass flags are set.
 func runView(paths []string, stdout, stderr io.Writer) error {
-	if currentOS != "darwin" {
+	if currentOS != "darwin" && !flagViewNoOpen && flagViewExec == "" {
 		fmt.Fprintln(stderr, "error: "+ErrMacOSOnly.Error())
 		return ErrMacOSOnly
 	}
@@ -201,14 +253,24 @@ func runView(paths []string, stdout, stderr io.Writer) error {
 	}
 
 	if sh.count == 0 {
-		fmt.Fprintln(stderr, "0 files matched，未打开 Finder")
+		fmt.Fprintln(stderr, "0 files matched，跳过后续动作")
 		return nil
 	}
 
 	fmt.Fprintf(stderr, "%d files → %s\n", sh.count, vDir)
 	fmt.Fprintln(stdout, vDir)
 
-	if !flagViewNoOpen {
+	// Action selection (precedence: --exec > --no-open > default Finder).
+	// --exec implies --no-open (no double window onto the same dir).
+	switch {
+	case flagViewExec != "":
+		// User command's exit code propagates (xargs/find convention).
+		if err := execUserCmd(flagViewExec, vDir, stdout, stderr); err != nil {
+			return fmt.Errorf("--exec 命令失败: %w", err)
+		}
+	case flagViewNoOpen:
+		// no-op: path already printed to stdout
+	default:
 		if err := openDir(vDir); err != nil {
 			// Non-fatal: user can still navigate to the path printed on stdout.
 			fmt.Fprintf(stderr, "warning: 打开 Finder 失败: %v\n", err)
