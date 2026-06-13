@@ -12,6 +12,9 @@ import (
 )
 
 // resetViewFlags resets all view flag vars between tests.
+// Also forces currentOS to "darwin" so happy-path tests run on Linux CI.
+// Tests that want to test the non-mac rejection path must override
+// currentOS themselves after calling this (see TestRunView_NonMacReturnsError).
 func resetViewFlags(t *testing.T) {
 	t.Helper()
 	flagViewType = "all"
@@ -35,6 +38,12 @@ func resetViewFlags(t *testing.T) {
 	flagViewExtractors = 2
 	flagViewChannelSize = 16
 	flagViewGeoProvider = "offline"
+
+	// Force darwin so the platform guard in runView lets the happy path
+	// execute on Linux CI runners. Auto-restore at end of test.
+	origOS := currentOS
+	currentOS = "darwin"
+	t.Cleanup(func() { currentOS = origOS })
 }
 
 // --- viewDirPath ---
