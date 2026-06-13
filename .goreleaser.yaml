@@ -1,0 +1,102 @@
+# goreleaser v2 配置
+# 验证: goreleaser check
+# 本地试构建: goreleaser release --snapshot --clean
+# 正式发布: git tag v0.1.0 && git push origin v0.1.0（CI 触发 release.yml）
+
+version: 2
+
+project_name: imfd
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: imfd
+    binary: imfd
+    main: ./
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.ShortCommit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - id: imfd
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    formats: [tar.gz]
+    files:
+      - README.md
+      - LICENSE*
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: git
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "Merge pull request"
+      - "Merge branch"
+  groups:
+    - title: Features
+      regexp: '^.*?(feat|add)(\(.+\))??!?:.+$'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Others
+      order: 999
+
+release:
+  github:
+    owner: xunull
+    name: imfd
+  draft: false
+  prerelease: auto
+  name_template: "imfd {{.Tag}}"
+  header: |
+    ## imfd {{.Tag}}
+
+    Cross-platform binaries for macOS (Intel + Apple Silicon) and Linux (amd64 + arm64).
+  footer: |
+    ## 安装
+
+    从下方 Assets 下载对应平台的 tarball：
+
+    ```bash
+    # macOS Apple Silicon
+    tar -xzf imfd_*_darwin_arm64.tar.gz
+    sudo mv imfd /usr/local/bin/
+    # macOS 首次运行绕过 Gatekeeper（未做 Apple 公证）
+    xattr -d com.apple.quarantine /usr/local/bin/imfd
+
+    # Linux amd64
+    tar -xzf imfd_*_linux_amd64.tar.gz
+    sudo mv imfd /usr/local/bin/
+    ```
+
+    **运行时依赖**: `ffprobe`（视频/音频元数据）— `brew install ffmpeg` 或 `apt install ffmpeg`。
+
+    校验: `shasum -a 256 -c checksums.txt`

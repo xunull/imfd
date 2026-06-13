@@ -22,11 +22,32 @@
 
 ## 安装
 
+### 预编译二进制（推荐）
+
+从 [GitHub Releases](https://github.com/xunull/imfd/releases/latest) 下载对应平台的 tarball：
+
+```bash
+# macOS Apple Silicon
+tar -xzf imfd_*_darwin_arm64.tar.gz
+sudo mv imfd /usr/local/bin/
+
+# macOS 首次运行需绕过 Gatekeeper（未做 Apple 公证）
+xattr -d com.apple.quarantine /usr/local/bin/imfd
+
+# Linux
+tar -xzf imfd_*_linux_amd64.tar.gz   # 或 linux_arm64
+sudo mv imfd /usr/local/bin/
+```
+
+支持平台：`darwin-amd64` / `darwin-arm64` / `linux-amd64` / `linux-arm64`。
+
+### 通过 go install
+
 ```bash
 go install github.com/xunull/imfd@latest
 ```
 
-或从源码编译：
+### 从源码编译
 
 ```bash
 git clone https://github.com/xunull/imfd.git

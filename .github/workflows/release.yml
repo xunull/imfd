@@ -1,0 +1,46 @@
+# Release workflow
+#
+# 触发: 推送 v* 格式的 tag (例 v0.1.0)。
+# 流程: 检出全部 git 历史 → setup-go → goreleaser release。
+#
+# 发布步骤:
+#   1. 本地：git tag v0.1.0 && git push origin v0.1.0
+#   2. CI 自动构建 darwin/linux × amd64/arm64
+#   3. CI 把二进制上传到 GitHub Releases
+#
+# 注意：goreleaser 的 changelog 会从上一个 tag 到当前 tag 的 git log 生成。
+# 第一次发布时（没有上一个 tag）使用全部历史；后续每个 tag 仅包含增量。
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # goreleaser changelog 需要全部历史
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: true
+
+      - name: Run goreleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

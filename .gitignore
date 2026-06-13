@@ -15,3 +15,7 @@
 # vendor/
 
 .idea
+
+# goreleaser snapshot / release 输出
+dist/
+
