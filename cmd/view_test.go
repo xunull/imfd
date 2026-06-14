@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/pflag"
 	"github.com/xunull/imfd/internal/media"
 )
 
@@ -33,6 +34,8 @@ func resetViewFlags(t *testing.T) {
 	flagViewISO = ""
 	flagViewYear = ""
 	flagViewFilter = ""
+	flagViewEdited = false
+	flagViewOOC = false
 	flagViewRename = ""
 	flagViewNoOpen = true // always skip Finder in tests
 	flagViewExec = ""
@@ -47,6 +50,9 @@ func resetViewFlags(t *testing.T) {
 	origOS := currentOS
 	currentOS = "darwin"
 	t.Cleanup(func() { currentOS = origOS })
+
+	// 重置 cobra flag.Changed 状态——多次 Execute 之间 cobra 把 flag 视为 sticky
+	viewCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 }
 
 // --- viewDirPath ---

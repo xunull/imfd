@@ -19,7 +19,7 @@
 - 可扩展的维度统计框架，新增维度只需一个 `KeyExtractor` 函数（或用 `stats.NewFieldDimension` 工厂）
 - 使用 ants 协程池实现目录遍历与媒体提取的并行处理
 - 支持终端表格和 JSON 两种输出格式
-- 子命令矩阵：`scan`（聚合统计）/ `info`（单文件详情）/ `list`（按条件筛路径，pipe 友好）/ **`view`**（按条件在 Finder 或指定 app 中弹虚拟视图）/ `cache`（管理元数据 cache）
+- 子命令矩阵：`scan`（聚合统计）/ `info`（单文件详情）/ `list`（按条件筛路径，pipe 友好）/ `view`（按条件在 Finder 或指定 app 中弹虚拟视图）/ **`verify`**（检测图像是否被编辑过：original / camera-rendered / edited / unknown）/ `cache`（管理元数据 cache）
 
 ## 安装
 
@@ -407,6 +407,79 @@ imfd view --province 云南 ~/Pictures
 | Windows | ❌ exit 2 | ✅（理论上；未在 Windows 上测） | ✅ |
 
 只有「默认动作 = 打开 Finder」依赖 macOS 的 `open` 命令。指定 `--exec` 或 `--no-open` 时，view 在任何平台上都能工作。
+
+## 编辑检测 (verify)
+
+`imfd verify` 是 imfd 的「侦探」命令：检测一张图像是否经过后期编辑（Lightroom / Photoshop / 其它工具），还是相机直出。和 `info`（看全部元数据）不同——verify 聚焦「这张图被处理过吗」，给出 4 级判定 + 支持判定的具体信号。
+
+```bash
+# 单文件人类可读报告
+imfd verify ~/photo.jpg
+
+# JSON 输出（脚本友好）
+imfd verify ~/photo.jpg -f json
+
+# 多文件批量
+imfd verify ~/Photos/*.jpg
+
+# 批量审计（filter 走 list 的 pipe）
+imfd list --edited ~/Photos          # 只看编辑过的
+imfd list --ooc ~/Photos             # out-of-camera 直出
+
+# 与 view 组合：在 Lightroom 中打开「所有 OOC Sony」
+imfd view --ooc --camera-make Sony ~/Photos --exec "open -a 'Adobe Lightroom Classic'"
+
+# 找出图库里所有 Photoshop 编辑过的图
+imfd list --filter "is_edited == true" ~/Photos | wc -l
+```
+
+### Verdict 4 级
+
+| Verdict | 含义 | 触发条件 |
+|---|---|---|
+| `original` | 相机直出（OOC） | Software 字段空且 ModifyDate 与 DateTimeOriginal 差 ≤60s（或 ModifyDate 缺失） |
+| `camera-rendered` | 相机内置软件渲染 | Software 含相机厂商关键字：Imaging Edge / DPP / RAW Converter / HDR+ 等 |
+| `edited` | 经过后期编辑工具处理 | Software 含编辑器关键字（Lightroom / Photoshop / Capture One 等） 或 ModifyDate 比 DateTimeOriginal 晚 >60s |
+| `unknown` | 信号不足无法判定 | 无 EXIF 数据（PNG screenshot），或 Software 字段未归类 |
+
+### 内置识别的工具
+
+**编辑器**（命中 → `edited`）：lightroom, photoshop, capture one, luminar, affinity, pixelmator, preview, photos (macOS/iOS), darktable, rawtherapee, on1, dxo, snapseed, vsco, gimp
+
+**相机内置软件**（命中 → `camera-rendered`，**不算** edited）：imaging edge (Sony), digital photo professional (Canon), raw file converter (Fujifilm), raw converter, hdr+ (Pixel), camera, firmware
+
+### verify 常用 flag
+
+| flag | 说明 |
+|---|---|
+| `-f`, `--format` | 输出格式：`table`（默认，人类可读 + 颜色）/ `json`（结构化） |
+
+### list/view 的 `--edited` / `--ooc` flag
+
+| flag | 说明 |
+|---|---|
+| `--edited` | 过滤到 `is_edited == true` 的文件 |
+| `--ooc` | 过滤到 `is_edited == false`（out-of-camera）的文件 |
+
+两者互斥；同时给会 exit 2。可与所有现有 list/view filter 组合（`--camera-make` / `--province` / `--filter` etc）。
+
+### Edge cases
+
+| 场景 | 处理 |
+|---|---|
+| 非图像文件（mp4 / mp3） | verify SKIP exit 0；多文件继续；list/view 自动过滤 |
+| 缺 EXIF 整段（PNG / 截图） | verdict = `unknown`，is_edited = false |
+| 相机 RAW→JPEG 转换（ModifyDate 比 DateTimeOriginal 晚几十秒） | 60s 容忍窗口保护，不算 edited |
+| Software 字段被 metadata stripping 抹掉 + ModifyDate 5d 后 | 仅靠 ModifyDate 差值仍能命中 edited |
+| RAW 文件（CR3 / ARW / RAF） | 同样路径；多数 RAW 没 Software → 自然 original |
+
+### 已知局限（v1 不修）
+
+- 富士菲林模拟 / 索尼 PicProfile 等相机内 in-app 滤镜会写 Software，命中相机白名单后归 `camera-rendered`（事实正确，但用户语义上可能视为「调过」）
+- 截图重新保存、社交 app 转存会丢 Software 字段，看起来像直出
+- 不深度解析 XMP edit history（Lightroom 的「亮度+1.2、对比度-0.3」记录）
+
+更复杂的 AI 检测（C2PA Content Credentials）、文件完整性 forensics 在 TODO，目前不在 v1 范围。
 
 ## 元数据 Cache
 

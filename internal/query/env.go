@@ -53,6 +53,7 @@ var AllowedFields = []string{
 	"video_height",
 	"device_type",
 	"scene_starry_sky",
+	"is_edited",
 }
 
 // envTypes 是 env 的类型骨架，给 expr.Env 做 compile-time type check。
@@ -88,6 +89,7 @@ func envTypes() map[string]any {
 		"video_height":      0,
 		"device_type":       "",
 		"scene_starry_sky":  false,
+		"is_edited":         false,
 	}
 }
 
@@ -131,11 +133,12 @@ func BuildEnv(record *media.MediaRecord, needles []string) map[string]any {
 				env["capture_hour"] = record.Exif.DateTimeOriginal.Hour()
 			}
 
-			// derived: device_type / scene_starry_sky
+			// derived: device_type / scene_starry_sky / is_edited
 			if dt := media.DeviceType(record.Exif.CameraMake); dt != media.DeviceTypeUnknown {
 				env["device_type"] = dt
 			}
 			env["scene_starry_sky"] = media.IsStarrySky(record)
+			env["is_edited"] = media.IsEdited(record)
 		}
 
 		if record.Location != nil {

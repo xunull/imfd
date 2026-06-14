@@ -71,6 +71,16 @@ type ExifInfo struct {
 	DateTimeOriginal time.Time `json:"date_time_original,omitzero"`
 	HasDateTime      bool      `json:"has_date_time,omitempty"`
 
+	// 编辑相关字段（verify 命令用）
+	// Software：EXIF 0x0131 — 写入工具（Lightroom / Photoshop / 相机内置软件）。
+	// 直出文件通常为空。
+	Software string `json:"software,omitempty"`
+
+	// ModifyDate：EXIF 0x0132 (DateTime) — 文件最后修改时间，与 DateTimeOriginal 严格独立。
+	// 编辑器写入新值；IsEdited 用 ModifyDate > DateTimeOriginal + 60s 做信号。
+	ModifyDate    time.Time `json:"modify_date,omitzero"`
+	HasModifyDate bool      `json:"has_modify_date,omitempty"`
+
 	// GPS
 	GPS GPSInfo `json:"gps"`
 }

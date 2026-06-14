@@ -56,6 +56,10 @@ func ExtractImageExif(filePath string) (*media.ExifInfo, error) {
 	info.Flash = decodeFlash(getTagInt(x, exif.Flash))
 	info.ColorSpace = getTagString(x, exif.ColorSpace)
 
+	// Software 字段：编辑器（Lightroom / Photoshop）会写自己的名字。
+	// 相机直出通常为空；少数相机内置软件（"Sony Imaging Edge"）也会写——后续 IsEdited 区分。
+	info.Software = getTagString(x, exif.Software)
+
 	if w := getTagInt(x, exif.PixelXDimension); w > 0 {
 		info.ImageWidth = w
 	}
@@ -63,9 +67,20 @@ func ExtractImageExif(filePath string) (*media.ExifInfo, error) {
 		info.ImageHeight = h
 	}
 
-	if dt, err := x.DateTime(); err == nil {
+	// DateTimeOriginal (0x9003)：拍摄时间。
+	// 注意：x.DateTime() 在 DateTimeOriginal 缺失时会 fallback 到 DateTime (= ModifyDate)，
+	// 这会让 IsEdited 的「ModifyDate > DateTimeOriginal + 60s」变成 self-compare。
+	// 此处严格只读 DateTimeOriginal tag，确保语义。
+	if dt, ok := getTagDateTime(x, exif.DateTimeOriginal); ok {
 		info.DateTimeOriginal = dt
 		info.HasDateTime = true
+	}
+
+	// DateTime (0x0132) = ModifyDate：文件最后修改时间（编辑器写入）。
+	// 与 DateTimeOriginal 严格独立读取，给 IsEdited 比较用。
+	if dt, ok := getTagDateTime(x, exif.DateTime); ok {
+		info.ModifyDate = dt
+		info.HasModifyDate = true
 	}
 
 	lat, lon, err := x.LatLong()
@@ -124,6 +139,25 @@ func getTagInt(x *exif.Exif, tag exif.FieldName) int {
 		return -1
 	}
 	return v
+}
+
+// getTagDateTime 读指定 EXIF tag 并解析为 time.Time。
+// 不像 goexif 的 x.DateTime()，本函数严格只读指定 tag，不做 fallback。
+// 用于区分 DateTimeOriginal（拍摄时间）和 DateTime（ModifyDate / 编辑时间）。
+func getTagDateTime(x *exif.Exif, tag exif.FieldName) (time.Time, bool) {
+	t, err := x.Get(tag)
+	if err != nil {
+		return time.Time{}, false
+	}
+	s, err := t.StringVal()
+	if err != nil {
+		return time.Time{}, false
+	}
+	dt, err := parseExifDateTime(s)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return dt, true
 }
 
 func formatShutterSpeed(x *exif.Exif) string {

@@ -29,6 +29,8 @@ var (
 	flagListAudioCodecs  []string
 	flagListVideoCodecs  []string
 	flagListFilter       string
+	flagListEdited       bool
+	flagListOOC          bool
 	flagListPrint0       bool
 	flagListNoCache      bool
 	flagListWorkers      int
@@ -82,6 +84,9 @@ func init() {
 	listCmd.Flags().StringVar(&flagListISO, "iso", "", "ISO: N | >N | <N | >=N | <=N | N-M")
 	listCmd.Flags().StringVar(&flagListYear, "year", "", "拍摄年份: N | >=N | N-M")
 	listCmd.Flags().StringVarP(&flagListFilter, "filter", "f", "", "expr-lang DSL filter（高阶；和 flag 是 AND）")
+	listCmd.Flags().BoolVar(&flagListEdited, "edited", false, "只看编辑过的图像（Lightroom / Photoshop / 后期工具）；与 --ooc 互斥")
+	listCmd.Flags().BoolVar(&flagListOOC, "ooc", false, "只看 out-of-camera 直出图像；与 --edited 互斥")
+	listCmd.MarkFlagsMutuallyExclusive("edited", "ooc")
 	listCmd.Flags().BoolVarP(&flagListPrint0, "print0", "0", false, "用 NUL 分隔输出（xargs -0 友好）")
 	listCmd.Flags().BoolVar(&flagListNoCache, "no-cache", false, "跳过 cache 读写（强制重新提取）")
 	listCmd.Flags().IntVarP(&flagListWorkers, "workers", "w", 8, "目录遍历并发数")
@@ -114,6 +119,8 @@ func runList(paths []string, stdout, stderr io.Writer) error {
 		Codecs:       flagListCodecs,
 		AudioCodecs:  flagListAudioCodecs,
 		VideoCodecs:  flagListVideoCodecs,
+		Edited:       flagListEdited,
+		OOC:          flagListOOC,
 	}
 	expr, needles := query.BuildFilter(flags, flagListFilter)
 

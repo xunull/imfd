@@ -14,7 +14,7 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(scanCmd, infoCmd, listCmd, cacheCmd, viewCmd)
+	rootCmd.AddCommand(scanCmd, infoCmd, listCmd, cacheCmd, viewCmd, verifyCmd)
 }
 
 // SetVersionInfo 由 main.go 在 init 后调用，把 goreleaser 注入的 ldflags 版本信息写到 rootCmd.Version。

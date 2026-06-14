@@ -18,6 +18,8 @@ const (
 	ansiBlue     = "\x1b[34m"
 	ansiMagenta  = "\x1b[35m"
 	ansiGreen    = "\x1b[32m"
+	ansiYellow   = "\x1b[33m"
+	ansiCyan     = "\x1b[36m"
 	ansiBoldCyan = "\x1b[1;36m"
 )
 
@@ -48,6 +50,15 @@ func (c *Colorer) Dim(s string) string { return c.wrap(ansiDim, s) }
 
 // SectionHeader 是 dashboard 五个 section 标题的统一样式
 func (c *Colorer) SectionHeader(s string) string { return c.wrap(ansiBoldCyan, s) }
+
+// Green 用于 verify 的 original verdict（直出 = 干净 = 绿）
+func (c *Colorer) Green(s string) string { return c.wrap(ansiGreen, s) }
+
+// Yellow 用于 verify 的 edited verdict（编辑过 = 注意 = 黄）
+func (c *Colorer) Yellow(s string) string { return c.wrap(ansiYellow, s) }
+
+// Cyan 用于 verify 的 camera-rendered verdict（相机内置软件 = 中性 = 青）
+func (c *Colorer) Cyan(s string) string { return c.wrap(ansiCyan, s) }
 
 // Media 根据媒体类型上色：image 蓝、video 紫、audio 绿
 // 未知类型返回原色（保守降级）

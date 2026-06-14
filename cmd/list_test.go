@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/spf13/pflag"
 )
 
 // resetListFlags 重置 list flag 状态防止子测试间互相污染
@@ -22,12 +24,18 @@ func resetListFlags(t *testing.T) {
 	flagListISO = ""
 	flagListYear = ""
 	flagListFilter = ""
+	flagListEdited = false
+	flagListOOC = false
 	flagListPrint0 = false
 	flagListNoCache = true // 测试不依赖 cache；隔离副作用
 	flagListWorkers = 8
 	flagListExtractors = 0
 	flagListChannelSize = 1024
 	flagListGeoProvider = "offline"
+
+	// 重置 cobra flag.Changed 状态——多次 Execute 之间 cobra 把 flag 视为 sticky
+	// 不重置会让 mutex 检查在第二次 Execute 时误报
+	listCmd.Flags().VisitAll(func(f *pflag.Flag) { f.Changed = false })
 }
 
 type listCall struct {
@@ -167,4 +175,44 @@ func TestRunList_SyntaxErrorOnBadFilter(t *testing.T) {
 	_ = stderr
 	// skip 这个 path 的实测；query 包已有 syntax error 测试
 	t.Skip("syntax error path 走 os.Exit；query/eval_test.go 已覆盖 NewEvaluator 报错")
+}
+
+// TestListEditedOOCMutex 验证 --edited 和 --ooc 同时给会被 cobra 拦截。
+// 走 rootCmd.Execute() 而不是 runList，因为 mutex 校验是 cobra 在 RunE 前做的。
+func TestListEditedOOCMutex(t *testing.T) {
+	resetListFlags(t)
+	_, restore := withFakeListRunner(t)
+	defer restore()
+
+	var stderr bytes.Buffer
+	rootCmd.SetErr(&stderr)
+	rootCmd.SetArgs([]string{"list", "--edited", "--ooc", "/x"})
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for mutually exclusive --edited / --ooc")
+	}
+	// cobra's MarkFlagsMutuallyExclusive 错误文本是：
+	// "if any flags in the group [edited ooc] are set none of the others can be; [edited ooc] were all set"
+	// 匹配 "edited" 和 "ooc" 共存即可，不绑定具体话术
+	if !strings.Contains(err.Error(), "edited") || !strings.Contains(err.Error(), "ooc") {
+		t.Errorf("error should mention both 'edited' and 'ooc' flag names, got: %v", err)
+	}
+}
+
+// TestListEditedAlone 单独 --edited 应该正常通过到 runner
+func TestListEditedAlone(t *testing.T) {
+	resetListFlags(t)
+	_, restore := withFakeListRunner(t)
+	defer restore()
+
+	rootCmd.SetArgs([]string{"list", "--edited", "/x"})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("--edited alone should not error: %v", err)
+	}
+	if !flagListEdited {
+		t.Error("flagListEdited should be true")
+	}
+	if flagListOOC {
+		t.Error("flagListOOC should be false")
+	}
 }

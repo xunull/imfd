@@ -31,6 +31,11 @@ type ListFlags struct {
 	Codecs      []string
 	AudioCodecs []string
 	VideoCodecs []string
+	// 编辑检测 flag（互斥；cobra 在 cmd 层做 MarkFlagsMutuallyExclusive 校验）：
+	//   Edited=true  → 翻译为 (is_edited == true)，只看编辑过的
+	//   OOC=true     → 翻译为 (is_edited == false)，只看 out-of-camera 直出
+	Edited bool
+	OOC    bool
 }
 
 // BuildFilter 把 ListFlags + UserFilter 翻译成单一 expr 字符串 + needles。
@@ -92,6 +97,14 @@ func BuildFilter(f ListFlags, userFilter string) (string, []string) {
 	}
 	if f.Scene == "starry_sky" {
 		parts = append(parts, "(scene_starry_sky == true)")
+	}
+
+	// 编辑检测（--edited / --ooc 互斥，cobra 层已保证只有一个被设置）
+	if f.Edited {
+		parts = append(parts, "(is_edited == true)")
+	}
+	if f.OOC {
+		parts = append(parts, "(is_edited == false)")
 	}
 
 	// numeric range syntax
