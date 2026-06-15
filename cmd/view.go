@@ -36,6 +36,8 @@ var (
 	flagViewFilter       string
 	flagViewEdited       bool
 	flagViewOOC          bool
+	flagViewAI           bool
+	flagViewNotAI        bool
 	flagViewRename       string
 	flagViewNoOpen       bool
 	flagViewExec         string
@@ -147,6 +149,9 @@ func init() {
 	viewCmd.Flags().BoolVar(&flagViewEdited, "edited", false, "只看编辑过的图像（Lightroom / Photoshop / 后期工具）；与 --ooc 互斥")
 	viewCmd.Flags().BoolVar(&flagViewOOC, "ooc", false, "只看 out-of-camera 直出图像；与 --edited 互斥")
 	viewCmd.MarkFlagsMutuallyExclusive("edited", "ooc")
+	viewCmd.Flags().BoolVar(&flagViewAI, "ai", false, "只看 AI 生成图像（C2PA / DALL·E / Midjourney / SD 等）；与 --not-ai 互斥")
+	viewCmd.Flags().BoolVar(&flagViewNotAI, "not-ai", false, "排除 AI 生成图像；与 --ai 互斥")
+	viewCmd.MarkFlagsMutuallyExclusive("ai", "not-ai")
 	viewCmd.Flags().StringVar(&flagViewRename, "rename", "", `symlink 重命名模板，例: "{date}_{city}.{ext}"（默认保留原文件名）`)
 	viewCmd.Flags().BoolVar(&flagViewNoOpen, "no-open", false, "只建 symlink，不打开 Finder（输出目录路径到 stdout）")
 	viewCmd.Flags().StringVar(&flagViewExec, "exec", "", `执行命令并把视图目录作为最后一个参数，例: --exec "open -a 'Adobe Lightroom Classic'"（隐含 --no-open）`)
@@ -187,6 +192,8 @@ func runView(paths []string, stdout, stderr io.Writer) error {
 		VideoCodecs:  flagViewVideoCodecs,
 		Edited:       flagViewEdited,
 		OOC:          flagViewOOC,
+		AI:           flagViewAI,
+		NotAI:        flagViewNotAI,
 	}
 	filterExpr, needles := query.BuildFilter(flags, flagViewFilter)
 

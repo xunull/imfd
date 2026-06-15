@@ -145,6 +145,8 @@ func EditSignals(r *MediaRecord) []string {
 		signals = append(signals, "✓ Software 字段命中编辑器关键字: "+r.Exif.Software)
 	case softwareCamera:
 		signals = append(signals, "✓ Software 字段为相机内置软件: "+r.Exif.Software)
+	case softwareAI:
+		signals = append(signals, "✓ Software 字段为 AI 生成工具: "+r.Exif.Software+"（见 AI verdict）")
 	case softwareUnknown:
 		if r.Exif.Software != "" {
 			signals = append(signals, "? Software 字段未归类: "+r.Exif.Software)
@@ -178,16 +180,22 @@ const (
 	softwareUnknown softwareClass = iota
 	softwareEditor
 	softwareCamera
+	softwareAI
 )
 
-// classifySoftware 把 Software 字段归类为 editor / camera / unknown。
-// 优先匹配 cameraSoftwareKeywords —— 「Sony Imaging Edge」不应被 editor 关键字误捕。
+// classifySoftware 把 Software 字段归类为 ai / editor / camera / unknown。
+// 优先级 AI > Editor > Camera（plan-eng-review）：AI 工具名（如 "Adobe Firefly"）
+// 即便撞上 editor 关键字也归 AI，不算「人工编辑」。
+// camera 优先于 editor —— 「Sony Imaging Edge」不应被 editor 关键字误捕。
 func classifySoftware(s string) softwareClass {
 	if s == "" {
 		return softwareUnknown
 	}
 	low := strings.ToLower(s)
 
+	if containsAIKeyword(low) {
+		return softwareAI
+	}
 	for _, k := range cameraSoftwareKeywords {
 		if strings.Contains(low, k) {
 			return softwareCamera

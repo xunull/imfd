@@ -26,6 +26,8 @@ func resetListFlags(t *testing.T) {
 	flagListFilter = ""
 	flagListEdited = false
 	flagListOOC = false
+	flagListAI = false
+	flagListNotAI = false
 	flagListPrint0 = false
 	flagListNoCache = true // 测试不依赖 cache；隔离副作用
 	flagListWorkers = 8

@@ -38,7 +38,7 @@ func TestIntegration_VerifyOriginalSony(t *testing.T) {
 	path := verifyFixturePath(t, "image_original_sony.jpg")
 
 	var stdout, stderr bytes.Buffer
-	if err := runVerify([]string{path}, "json", &stdout, &stderr); err != nil {
+	if err := runVerify([]string{path}, "json", false, &stdout, &stderr); err != nil {
 		t.Fatalf("runVerify: %v\nstderr: %s", err, stderr.String())
 	}
 
@@ -66,7 +66,7 @@ func TestIntegration_VerifyLightroomEdited(t *testing.T) {
 	path := verifyFixturePath(t, "image_edited_lightroom.jpg")
 
 	var stdout, stderr bytes.Buffer
-	if err := runVerify([]string{path}, "json", &stdout, &stderr); err != nil {
+	if err := runVerify([]string{path}, "json", false, &stdout, &stderr); err != nil {
 		t.Fatalf("runVerify: %v\nstderr: %s", err, stderr.String())
 	}
 
@@ -106,7 +106,7 @@ func TestIntegration_VerifyCameraRendered(t *testing.T) {
 	path := verifyFixturePath(t, "image_camera_rendered_sony.jpg")
 
 	var stdout, stderr bytes.Buffer
-	if err := runVerify([]string{path}, "json", &stdout, &stderr); err != nil {
+	if err := runVerify([]string{path}, "json", false, &stdout, &stderr); err != nil {
 		t.Fatalf("runVerify: %v\nstderr: %s", err, stderr.String())
 	}
 
@@ -131,7 +131,7 @@ func TestIntegration_VerifyNoExifPNG(t *testing.T) {
 	path := verifyFixturePath(t, "image_no_exif.png")
 
 	var stdout, stderr bytes.Buffer
-	if err := runVerify([]string{path}, "json", &stdout, &stderr); err != nil {
+	if err := runVerify([]string{path}, "json", false, &stdout, &stderr); err != nil {
 		t.Fatalf("runVerify: %v", err)
 	}
 
@@ -147,5 +147,48 @@ func TestIntegration_VerifyNoExifPNG(t *testing.T) {
 	}
 	if r.IsEdited {
 		t.Error("PNG with no EXIF should not be edited")
+	}
+}
+
+// TestIntegration_VerifyC2PAManifest 用真实 c2patool 签名的 JPEG 验证
+// JUMBF/CBOR 解析在野外有效（不是 self-fulfilling synthetic oracle）。
+// fixture 由 testdata/gen.sh 经 c2patool 生成（仓库已 checked-in 一份）。
+func TestIntegration_VerifyC2PAManifest(t *testing.T) {
+	resetVerifyFlags(t)
+	path := verifyFixturePath(t, "image_ai_c2pa.jpg")
+
+	var stdout, stderr bytes.Buffer
+	if err := runVerify([]string{path}, "json", true, &stdout, &stderr); err != nil {
+		t.Fatalf("runVerify: %v\nstderr: %s", err, stderr.String())
+	}
+
+	var r struct {
+		AIVerdict     string `json:"ai_verdict"`
+		IsAIGenerated bool   `json:"is_ai_generated"`
+		C2PA          *struct {
+			Present   bool   `json:"present"`
+			Generator string `json:"generator"`
+			Trust     string `json:"trust"`
+		} `json:"c2pa"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &r); err != nil {
+		t.Fatalf("invalid JSON: %v\nbytes: %s", err, stdout.String())
+	}
+
+	if r.AIVerdict != "ai-generated" {
+		t.Errorf("ai_verdict: got %q, want 'ai-generated'", r.AIVerdict)
+	}
+	if !r.IsAIGenerated {
+		t.Error("is_ai_generated should be true for C2PA-signed file")
+	}
+	if r.C2PA == nil || !r.C2PA.Present {
+		t.Fatalf("c2pa should be present, got %+v", r.C2PA)
+	}
+	// 关键断言：真实文件的 claim_generator_info 被正确提取
+	if r.C2PA.Generator == "" {
+		t.Error("generator should be extracted from real C2PA manifest (regression: map-form claim_generator_info)")
+	}
+	if r.C2PA.Trust != "detection-only" {
+		t.Errorf("trust: got %q, want 'detection-only'", r.C2PA.Trust)
 	}
 }

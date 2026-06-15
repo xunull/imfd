@@ -13,6 +13,7 @@ import (
 
 var (
 	flagVerifyFormat string
+	flagVerifyC2PA   bool
 )
 
 // verifyRunner 是命令的可替换执行体（同 scanRunner / infoRunner / listRunner / viewRunner）。
@@ -30,22 +31,30 @@ var verifyRunner = runVerify
 //   verify        —— 单/多文件展开人类可读的判定原因
 var verifyCmd = &cobra.Command{
 	Use:   "verify <file>...",
-	Short: "侦探单个或多个图像文件：是否经过后期编辑？",
-	Long: `verify 检测一张图像的「身世」——是相机直出，还是被 Lightroom / Photoshop /
-其它编辑器处理过？给出 4 级判定（original / camera-rendered / edited / unknown）
-和支持判定的具体信号（Software 字段、ModifyDate 比 DateTimeOriginal 晚多少 等）。
+	Short: "侦探单个或多个图像文件：AI 生成？后期编辑？",
+	Long: `verify 检测一张图像的「身世」，给出两个独立维度的判定：
+
+  AI 生成   ai-generated / not-ai / unknown
+            信号：C2PA Content Credentials manifest、EXIF/PNG Software 含 AI 工具名、
+            Stable Diffusion / ComfyUI 在 PNG 写的 prompt/参数。
+  后期编辑  original / camera-rendered / edited / unknown
+            信号：Software 字段、ModifyDate 比 DateTimeOriginal 晚多少。
+
+注意：detection-only —— 只读元数据声明，不验证密码学签名。Software 和 C2PA
+manifest 都可被伪造，不要作为法律证据或内容审核唯一依据。
 
 示例：
-  # 单文件人类可读报告
+  # 单文件人类可读报告（AI + 编辑双判定）
   imfd verify ~/photo.jpg
 
-  # 多文件批量
-  imfd verify ~/Photos/*.jpg
+  # 展开 C2PA manifest 详情（生成器、信任级别）
+  imfd verify ~/photo.jpg --c2pa
 
   # JSON 输出（脚本友好）
   imfd verify ~/photo.jpg -f json
 
-  # 批量审计：找出所有编辑过的照片
+  # 批量审计：找出图库里所有 AI 生成图 / 编辑过的照片
+  imfd list --ai ~/Photos
   imfd list --edited ~/Photos
 
 非图像文件（mp4 / mp3）会被 skip，不影响后续文件的处理。
@@ -54,13 +63,15 @@ var verifyCmd = &cobra.Command{
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return verifyRunner(args, flagVerifyFormat, os.Stdout, os.Stderr)
+		return verifyRunner(args, flagVerifyFormat, flagVerifyC2PA, os.Stdout, os.Stderr)
 	},
 }
 
 func init() {
 	verifyCmd.Flags().StringVarP(&flagVerifyFormat, "format", "f", "table",
 		"输出格式: table（人类可读）, json（结构化）")
+	verifyCmd.Flags().BoolVar(&flagVerifyC2PA, "c2pa", false,
+		"展开 C2PA Content Credentials manifest 详情（生成器、信任级别）")
 }
 
 // runVerify 是 verifyRunner 的默认实现。
@@ -73,8 +84,8 @@ func init() {
 //     - 把 record 喂给 printer
 //  3. 文件间用 separator 隔开（仅 table 模式）
 //  4. 末尾：任一文件失败 → 返回简短摘要 error（main 印一行 + exit 1）
-func runVerify(paths []string, format string, stdout, stderr io.Writer) error {
-	printer := output.NewVerifyPrinter(stdout, format)
+func runVerify(paths []string, format string, c2paDetail bool, stdout, stderr io.Writer) error {
+	printer := output.NewVerifyPrinter(stdout, format, c2paDetail)
 
 	failed := 0
 	prevPrinted := false

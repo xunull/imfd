@@ -81,8 +81,29 @@ type ExifInfo struct {
 	ModifyDate    time.Time `json:"modify_date,omitzero"`
 	HasModifyDate bool      `json:"has_modify_date,omitempty"`
 
+	// AI 生成检测字段（verify --c2pa 用，detection-only）
+	// C2PA：JPEG App11 / PNG chunk 里的 Content Credentials manifest（nil=未找到）。
+	C2PA *C2PAInfo `json:"c2pa,omitempty"`
+
+	// PNGText：PNG tEXt/iTXt 文本条目（SD/ComfyUI/NovelAI 把 prompt、参数、
+	// 生成器名写在这里）。非 PNG 为空。
+	PNGText []PNGTextEntry `json:"png_text,omitempty"`
+
 	// GPS
 	GPS GPSInfo `json:"gps"`
+}
+
+// C2PAInfo 是 detection-only 的 C2PA manifest 检测结果（镜像 c2pa.Manifest，
+// 放在 media 包避免 extract→media→c2pa 的循环 import，且让 cache gob 序列化）。
+type C2PAInfo struct {
+	Present   bool   `json:"present"`
+	Generator string `json:"generator,omitempty"`
+}
+
+// PNGTextEntry 是 PNG tEXt/iTXt 的一个 key-value 对（镜像 c2pa.TextEntry）。
+type PNGTextEntry struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
 // VideoInfo 视频特有信息

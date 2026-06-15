@@ -36,6 +36,8 @@ func resetViewFlags(t *testing.T) {
 	flagViewFilter = ""
 	flagViewEdited = false
 	flagViewOOC = false
+	flagViewAI = false
+	flagViewNotAI = false
 	flagViewRename = ""
 	flagViewNoOpen = true // always skip Finder in tests
 	flagViewExec = ""

@@ -31,6 +31,8 @@ var (
 	flagListFilter       string
 	flagListEdited       bool
 	flagListOOC          bool
+	flagListAI           bool
+	flagListNotAI        bool
 	flagListPrint0       bool
 	flagListNoCache      bool
 	flagListWorkers      int
@@ -87,6 +89,9 @@ func init() {
 	listCmd.Flags().BoolVar(&flagListEdited, "edited", false, "只看编辑过的图像（Lightroom / Photoshop / 后期工具）；与 --ooc 互斥")
 	listCmd.Flags().BoolVar(&flagListOOC, "ooc", false, "只看 out-of-camera 直出图像；与 --edited 互斥")
 	listCmd.MarkFlagsMutuallyExclusive("edited", "ooc")
+	listCmd.Flags().BoolVar(&flagListAI, "ai", false, "只看 AI 生成图像（C2PA / DALL·E / Midjourney / SD 等）；与 --not-ai 互斥")
+	listCmd.Flags().BoolVar(&flagListNotAI, "not-ai", false, "排除 AI 生成图像；与 --ai 互斥")
+	listCmd.MarkFlagsMutuallyExclusive("ai", "not-ai")
 	listCmd.Flags().BoolVarP(&flagListPrint0, "print0", "0", false, "用 NUL 分隔输出（xargs -0 友好）")
 	listCmd.Flags().BoolVar(&flagListNoCache, "no-cache", false, "跳过 cache 读写（强制重新提取）")
 	listCmd.Flags().IntVarP(&flagListWorkers, "workers", "w", 8, "目录遍历并发数")
@@ -121,6 +126,8 @@ func runList(paths []string, stdout, stderr io.Writer) error {
 		VideoCodecs:  flagListVideoCodecs,
 		Edited:       flagListEdited,
 		OOC:          flagListOOC,
+		AI:           flagListAI,
+		NotAI:        flagListNotAI,
 	}
 	expr, needles := query.BuildFilter(flags, flagListFilter)
 

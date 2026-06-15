@@ -16,7 +16,8 @@ import (
 
 // schemaVersion must be incremented whenever cacheRecord fields change.
 //   v1 → v2 (2026-06-14): ExifInfo 加 Software + ModifyDate + HasModifyDate（verify edit detection）
-const schemaVersion = 2
+//   v2 → v3 (2026-06-14): ExifInfo 加 C2PA + PNGText（verify --c2pa AI 生成检测）
+const schemaVersion = 3
 
 // cacheRecord mirrors media.MediaRecord for gob serialization.
 // Excludes the Error field (interface type; only successful records are cached).

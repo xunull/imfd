@@ -54,6 +54,7 @@ var AllowedFields = []string{
 	"device_type",
 	"scene_starry_sky",
 	"is_edited",
+	"is_ai_generated",
 }
 
 // envTypes 是 env 的类型骨架，给 expr.Env 做 compile-time type check。
@@ -90,6 +91,7 @@ func envTypes() map[string]any {
 		"device_type":       "",
 		"scene_starry_sky":  false,
 		"is_edited":         false,
+		"is_ai_generated":   false,
 	}
 }
 
@@ -139,6 +141,7 @@ func BuildEnv(record *media.MediaRecord, needles []string) map[string]any {
 			}
 			env["scene_starry_sky"] = media.IsStarrySky(record)
 			env["is_edited"] = media.IsEdited(record)
+			env["is_ai_generated"] = media.IsAIGenerated(record)
 		}
 
 		if record.Location != nil {

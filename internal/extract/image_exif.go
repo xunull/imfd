@@ -1,17 +1,33 @@
 package extract
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"time"
 
 	"github.com/rwcarlsen/goexif/exif"
 	"github.com/rwcarlsen/goexif/tiff"
+	"github.com/xunull/imfd/internal/c2pa"
 	"github.com/xunull/imfd/internal/media"
 )
 
-// ExtractImageExif 从图像文件中提取 EXIF 信息
+// headReadSize 是从图像文件头读取的字节数。
+// EXIF (App1) 几乎总在文件最前；C2PA (App11) 推荐放靠前。64 KB 覆盖绝大多数。
+// 只读头部而非整文件：避免 50 MB DNG × 并发 worker 的内存峰值（plan-eng-review A2）。
+// 超过 64 KB 的 C2PA manifest 会 degrade（DetectJPEG 拿截断字节，可能仅 Present 无 Generator，
+// 或退回 keyword 信号）。
+const headReadSize = 64 * 1024
+
+// ExtractImageExif 从图像文件头提取 EXIF + C2PA + PNG 文本信号。
+//
+// 关键设计（plan-eng-review）：
+//   - 只读前 headReadSize 字节，goexif 和 c2pa 共享同一份 bytes（一次 IO）
+//   - goexif 解析失败不再是 error —— PNG screenshot / 很多 AI 图没有标准 EXIF，
+//     但仍可能有 C2PA manifest 或 PNG 文本信号。文件可读就返回非 nil info。
+//   - 只有文件 IO 失败才返回 error（此时 record.Exif 保持 nil）。
 func ExtractImageExif(filePath string) (*media.ExifInfo, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
@@ -19,13 +35,35 @@ func ExtractImageExif(filePath string) (*media.ExifInfo, error) {
 	}
 	defer f.Close()
 
-	x, err := exif.Decode(f)
+	head, err := io.ReadAll(io.LimitReader(f, headReadSize))
 	if err != nil {
-		return nil, fmt.Errorf("EXIF 解析失败: %w", err)
+		return nil, fmt.Errorf("读取文件头失败: %w", err)
 	}
 
 	info := &media.ExifInfo{}
 
+	// EXIF 解析（best-effort；失败不影响 C2PA/PNG 信号提取）
+	if x, derr := exif.Decode(bytes.NewReader(head)); derr == nil {
+		populateExif(info, x)
+	}
+
+	// C2PA manifest + PNG 文本信号检测（detection-only）
+	res := c2pa.Detect(head)
+	if res.Manifest != nil {
+		info.C2PA = &media.C2PAInfo{
+			Present:   res.Manifest.Present,
+			Generator: res.Manifest.Generator,
+		}
+	}
+	for _, e := range res.PNGText {
+		info.PNGText = append(info.PNGText, media.PNGTextEntry{Key: e.Key, Value: e.Value})
+	}
+
+	return info, nil
+}
+
+// populateExif 把 goexif 解析结果填进 ExifInfo（从 ExtractImageExif 拆出便于阅读）。
+func populateExif(info *media.ExifInfo, x *exif.Exif) {
 	info.CameraMake = getTagString(x, exif.Make)
 	info.CameraModel = getTagString(x, exif.Model)
 	info.LensModel = getTagString(x, exif.LensModel)
@@ -83,16 +121,13 @@ func ExtractImageExif(filePath string) (*media.ExifInfo, error) {
 		info.HasModifyDate = true
 	}
 
-	lat, lon, err := x.LatLong()
-	if err == nil {
+	if lat, lon, err := x.LatLong(); err == nil {
 		info.GPS = media.GPSInfo{
 			Latitude:  lat,
 			Longitude: lon,
 			HasGPS:    true,
 		}
 	}
-
-	return info, nil
 }
 
 func getTagString(x *exif.Exif, tag exif.FieldName) string {

@@ -36,6 +36,11 @@ type ListFlags struct {
 	//   OOC=true     → 翻译为 (is_edited == false)，只看 out-of-camera 直出
 	Edited bool
 	OOC    bool
+	// AI 生成检测 flag（互斥）：
+	//   AI=true    → (is_ai_generated == true)，只看 AI 生成图
+	//   NotAI=true → (is_ai_generated == false)，排除 AI 生成图
+	AI    bool
+	NotAI bool
 }
 
 // BuildFilter 把 ListFlags + UserFilter 翻译成单一 expr 字符串 + needles。
@@ -105,6 +110,14 @@ func BuildFilter(f ListFlags, userFilter string) (string, []string) {
 	}
 	if f.OOC {
 		parts = append(parts, "(is_edited == false)")
+	}
+
+	// AI 生成检测（--ai / --not-ai 互斥）
+	if f.AI {
+		parts = append(parts, "(is_ai_generated == true)")
+	}
+	if f.NotAI {
+		parts = append(parts, "(is_ai_generated == false)")
 	}
 
 	// numeric range syntax

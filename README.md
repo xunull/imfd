@@ -19,7 +19,7 @@
 - 可扩展的维度统计框架，新增维度只需一个 `KeyExtractor` 函数（或用 `stats.NewFieldDimension` 工厂）
 - 使用 ants 协程池实现目录遍历与媒体提取的并行处理
 - 支持终端表格和 JSON 两种输出格式
-- 子命令矩阵：`scan`（聚合统计）/ `info`（单文件详情）/ `list`（按条件筛路径，pipe 友好）/ `view`（按条件在 Finder 或指定 app 中弹虚拟视图）/ **`verify`**（检测图像是否被编辑过：original / camera-rendered / edited / unknown）/ `cache`（管理元数据 cache）
+- 子命令矩阵：`scan`（聚合统计）/ `info`（单文件详情）/ `list`（按条件筛路径，pipe 友好）/ `view`（按条件在 Finder 或指定 app 中弹虚拟视图）/ **`verify`**（侦探：AI 生成检测 + 编辑检测，含 C2PA Content Credentials）/ `cache`（管理元数据 cache）
 
 ## 安装
 
@@ -408,84 +408,121 @@ imfd view --province 云南 ~/Pictures
 
 只有「默认动作 = 打开 Finder」依赖 macOS 的 `open` 命令。指定 `--exec` 或 `--no-open` 时，view 在任何平台上都能工作。
 
-## 编辑检测 (verify)
+## 侦探 (verify) — AI 生成检测 + 编辑检测
 
-`imfd verify` 是 imfd 的「侦探」命令：检测一张图像是否经过后期编辑（Lightroom / Photoshop / 其它工具），还是相机直出。和 `info`（看全部元数据）不同——verify 聚焦「这张图被处理过吗」，给出 4 级判定 + 支持判定的具体信号。
+`imfd verify` 是 imfd 的「侦探」命令，对一张图像给出**两个独立维度**的判定：
+
+- **AI 生成**：`ai-generated` / `not-ai` / `unknown` —— 这张图是 AI 画的吗？
+- **后期编辑**：`original` / `camera-rendered` / `edited` / `unknown` —— 这张图被 Lightroom/PS 处理过吗？
+
+> ⚠ **detection-only**：verify 只读元数据声明，**不验证密码学签名**。EXIF Software
+> 字段和 C2PA manifest 都可以被伪造。**不要把 verify 结果当作法律证据或内容审核的
+> 唯一依据**。它回答的是「这张图_声称_自己是什么」，不是「我能_证明_它是什么」。
 
 ```bash
-# 单文件人类可读报告
+# 单文件人类可读报告（AI + 编辑双判定）
 imfd verify ~/photo.jpg
+
+# 展开 C2PA Content Credentials manifest 详情
+imfd verify ~/photo.jpg --c2pa
 
 # JSON 输出（脚本友好）
 imfd verify ~/photo.jpg -f json
 
-# 多文件批量
-imfd verify ~/Photos/*.jpg
-
-# 批量审计（filter 走 list 的 pipe）
+# 批量审计
+imfd list --ai ~/Photos              # 只看 AI 生成图
+imfd list --not-ai ~/Photos          # 排除 AI 生成图
 imfd list --edited ~/Photos          # 只看编辑过的
 imfd list --ooc ~/Photos             # out-of-camera 直出
 
-# 与 view 组合：在 Lightroom 中打开「所有 OOC Sony」
-imfd view --ooc --camera-make Sony ~/Photos --exec "open -a 'Adobe Lightroom Classic'"
+# 组合：在 Lightroom 打开「所有非 AI、Sony 拍的直出」
+imfd view --ooc --not-ai --camera-make Sony ~/Photos --exec "open -a 'Adobe Lightroom Classic'"
 
-# 找出图库里所有 Photoshop 编辑过的图
-imfd list --filter "is_edited == true" ~/Photos | wc -l
+# DSL：找出 AI 生成 + 已编辑的图
+imfd list --filter "is_ai_generated == true and is_edited == true" ~/Photos | wc -l
 ```
 
-### Verdict 4 级
+### AI 生成检测
+
+3 级判定，多信号「强/弱」合并：
+
+| AI Verdict | 含义 |
+|---|---|
+| `ai-generated` | 检测到 AI 生成信号（强信号一个即判，或弱信号 ≥2） |
+| `not-ai` | 有可分析元数据但无 AI 信号 |
+| `unknown` | 元数据不足（无 EXIF / C2PA / PNG 文本） |
+
+**强信号（任一命中 → ai-generated）：**
+- C2PA Content Credentials manifest（DALL·E 3 / Adobe Firefly / ChatGPT 默认嵌入，JPEG App11 + PNG chunk 都解析）
+- EXIF `Software` 字段含 AI 工具关键字
+- PNG `Software` 文本字段含 AI 工具关键字
+- PNG `parameters` 含 Stable Diffusion 生成签名（`Steps:` + `Sampler:`/`CFG scale:`）
+
+**弱信号（需 ≥2 不同 key → ai-generated）：** PNG 文本里出现 `prompt` / `workflow` / `comfyui` / `parameters`（ComfyUI 写 prompt+workflow 两个 → 命中）
+
+**识别的 AI 工具关键字：** DALL·E, Midjourney, Stable Diffusion, SDXL, Automatic1111/A1111, ComfyUI, InvokeAI, Fooocus, Adobe Firefly, Bing Image Creator, Imagen, FLUX, NovelAI, Leonardo.ai, Ideogram, Recraft, DreamStudio, GPT-image
+
+**防假阳**：AI 关键字**只在 Software / C2PA generator / 指定 PNG key 上匹配**，绝不在任意文本里匹配——所以 `Description="midjourney inspired"` 的普通照片**不会**被误判。
+
+### 编辑检测
 
 | Verdict | 含义 | 触发条件 |
 |---|---|---|
-| `original` | 相机直出（OOC） | Software 字段空且 ModifyDate 与 DateTimeOriginal 差 ≤60s（或 ModifyDate 缺失） |
+| `original` | 相机直出（OOC） | Software 空且 ModifyDate 与 DateTimeOriginal 差 ≤60s（或 ModifyDate 缺失） |
 | `camera-rendered` | 相机内置软件渲染 | Software 含相机厂商关键字：Imaging Edge / DPP / RAW Converter / HDR+ 等 |
-| `edited` | 经过后期编辑工具处理 | Software 含编辑器关键字（Lightroom / Photoshop / Capture One 等） 或 ModifyDate 比 DateTimeOriginal 晚 >60s |
+| `edited` | 经过后期编辑工具处理 | Software 含编辑器关键字 或 ModifyDate 比 DateTimeOriginal 晚 >60s |
 | `unknown` | 信号不足无法判定 | 无 EXIF 数据（PNG screenshot），或 Software 字段未归类 |
 
-### 内置识别的工具
+**编辑器关键字**（→ `edited`）：lightroom, photoshop, capture one, luminar, affinity, pixelmator, preview, photos (macOS/iOS), darktable, rawtherapee, on1, dxo, snapseed, vsco, gimp
 
-**编辑器**（命中 → `edited`）：lightroom, photoshop, capture one, luminar, affinity, pixelmator, preview, photos (macOS/iOS), darktable, rawtherapee, on1, dxo, snapseed, vsco, gimp
+**相机内置软件**（→ `camera-rendered`，**不算** edited）：imaging edge (Sony), digital photo professional (Canon), raw file converter (Fujifilm), hdr+ (Pixel), firmware
 
-**相机内置软件**（命中 → `camera-rendered`，**不算** edited）：imaging edge (Sony), digital photo professional (Canon), raw file converter (Fujifilm), raw converter, hdr+ (Pixel), camera, firmware
+> AI 工具名（如 "Adobe Firefly"）优先归 AI，不归编辑器——AI 生成 ≠ 人工编辑，两个维度独立。
 
-### verify 常用 flag
+### flag
 
-| flag | 说明 |
-|---|---|
-| `-f`, `--format` | 输出格式：`table`（默认，人类可读 + 颜色）/ `json`（结构化） |
+| 命令 | flag | 说明 |
+|---|---|---|
+| `verify` | `-f` / `--format` | `table`（默认）/ `json` |
+| `verify` | `--c2pa` | 展开 C2PA MANIFEST section（生成器、信任级别） |
+| `list` / `view` | `--ai` / `--not-ai` | 过滤 AI 生成 / 非 AI（互斥） |
+| `list` / `view` | `--edited` / `--ooc` | 过滤已编辑 / 直出（互斥） |
 
-### list/view 的 `--edited` / `--ooc` flag
+互斥 flag 同时给会 exit 2。可与所有现有 filter 组合（`--camera-make` / `--province` / `--filter`）。
 
-| flag | 说明 |
-|---|---|
-| `--edited` | 过滤到 `is_edited == true` 的文件 |
-| `--ooc` | 过滤到 `is_edited == false`（out-of-camera）的文件 |
+### 支持格式
 
-两者互斥；同时给会 exit 2。可与所有现有 list/view filter 组合（`--camera-make` / `--province` / `--filter` etc）。
+| 格式 | EXIF | C2PA manifest | PNG 文本信号 |
+|---|---|---|---|
+| JPEG | ✅ | ✅ App11 JUMBF（多 marker 自动重组） | — |
+| PNG | — | ✅ 内嵌 JUMBF | ✅ tEXt + iTXt（未压缩） |
+| HEIC / MP4 / WebP | — | ❌ v2 | — |
 
 ### Edge cases
 
 | 场景 | 处理 |
 |---|---|
-| 非图像文件（mp4 / mp3） | verify SKIP exit 0；多文件继续；list/view 自动过滤 |
-| 缺 EXIF 整段（PNG / 截图） | verdict = `unknown`，is_edited = false |
-| 相机 RAW→JPEG 转换（ModifyDate 比 DateTimeOriginal 晚几十秒） | 60s 容忍窗口保护，不算 edited |
-| Software 字段被 metadata stripping 抹掉 + ModifyDate 5d 后 | 仅靠 ModifyDate 差值仍能命中 edited |
-| RAW 文件（CR3 / ARW / RAF） | 同样路径；多数 RAW 没 Software → 自然 original |
+| 非图像文件（mp4 / mp3） | verify SKIP exit 0；多文件继续 |
+| 缺 EXIF 整段（PNG / 截图） | edit/AI verdict 视信号而定，无信号 → `unknown` |
+| 相机 RAW→JPEG 转换（ModifyDate 晚几十秒） | 60s 容忍窗口保护，不算 edited |
+| C2PA manifest > 64 KB | 只读文件头 64 KB；超出可能仅 Present 无 generator，或退回 keyword 信号 |
+| 单个 PNG `parameters` 无 SD 签名 | 仅 1 弱信号 → 不判 AI（防假阳） |
 
-### 已知局限（v1 不修）
+### 已知局限（v1 不修，见 TODOS.md）
 
-- 富士菲林模拟 / 索尼 PicProfile 等相机内 in-app 滤镜会写 Software，命中相机白名单后归 `camera-rendered`（事实正确，但用户语义上可能视为「调过」）
-- 截图重新保存、社交 app 转存会丢 Software 字段，看起来像直出
-- 不深度解析 XMP edit history（Lightroom 的「亮度+1.2、对比度-0.3」记录）
-
-更复杂的 AI 检测（C2PA Content Credentials）、文件完整性 forensics 在 TODO，目前不在 v1 范围。
+- **不验证 C2PA 密码学签名** —— detection-only，manifest 可伪造
+- Photoshop 生成式填充（generative fill）写 `Software="Adobe Photoshop"`，AI 生成信息只在 C2PA 里 —— 无 C2PA 时会被判 `edited` 而非 ai-generated
+- PNG **压缩** iTXt chunk 不解（仅未压缩）；ComfyUI 默认不压缩，不受影响
+- HEIC（iPhone 默认）/ MP4 / WebP 的 C2PA 暂不解
+- 不深度解析 XMP edit history
 
 ## 元数据 Cache
 
 imfd 内置 SQLite cache，首次扫描后将 EXIF/音视频元数据写入本地数据库，后续对同一目录的 `scan`/`list` 调用无需重新启动 ExifTool/FFprobe，速度提升 10-100x。
 
 **Cache 透明工作**，无需配置：文件 mtime 未变 → 命中缓存；文件修改/新增 → 自动失效并重新提取。
+
+> **升级提示**：当 imfd 扩展提取的元数据字段时（如新增 verify 的 C2PA 检测），cache schema 版本会自增，**首次运行旧 cache 会自动重建一次**（无需手动操作，全量重提取，几分钟到 30 分钟取决于库大小）。重建后恢复秒级。
 
 ### 查看 cache 状态
 

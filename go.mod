@@ -4,10 +4,12 @@ go 1.25.0
 
 require (
 	github.com/expr-lang/expr v1.17.8
+	github.com/fxamacker/cbor/v2 v2.9.2
 	github.com/jedib0t/go-pretty/v6 v6.7.8
 	github.com/panjf2000/ants/v2 v2.11.5
 	github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd
 	github.com/spf13/cobra v1.10.2
+	github.com/spf13/pflag v1.0.9
 	golang.org/x/term v0.29.0
 	modernc.org/sqlite v1.52.0
 )
@@ -21,7 +23,7 @@ require (
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/spf13/pflag v1.0.9 // indirect
+	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.22.0 // indirect

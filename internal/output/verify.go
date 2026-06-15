@@ -18,38 +18,56 @@ import (
 // 不复用 FileInfoPrinter，因为 verify 输出聚焦「编辑判定」+ signals，
 // 不需要 EXIF 全字段；JSON 结构也不同（加 verdict / signals）。
 //
+// c2paReport 是 JSON 里的 C2PA 子结构。
+type c2paReport struct {
+	Present   bool   `json:"present"`
+	Generator string `json:"generator,omitempty"`
+	Trust     string `json:"trust"` // 永远 "detection-only"
+}
+
 // VerifyReport 是 JSON 输出的固定结构，下游脚本可稳定消费。
+//
+// 两个独立维度：
+//   - verdict / is_edited：编辑检测（original/camera-rendered/edited/unknown）
+//   - ai_verdict / is_ai_generated：AI 生成检测（ai-generated/not-ai/unknown）
 type VerifyReport struct {
-	FilePath         string   `json:"file_path"`
-	FileName         string   `json:"file_name"`
-	FileSize         int64    `json:"file_size"`
-	Type             string   `json:"type"`
-	IsEdited         bool     `json:"is_edited"`
-	Verdict          string   `json:"verdict"`
-	CameraMake       string   `json:"camera_make,omitempty"`
-	CameraModel      string   `json:"camera_model,omitempty"`
-	LensModel        string   `json:"lens_model,omitempty"`
-	Software         string   `json:"software,omitempty"`
-	DateTimeOriginal string   `json:"date_time_original,omitempty"`
-	ModifyDate       string   `json:"modify_date,omitempty"`
-	Signals          []string `json:"signals"`
-	Skipped          string   `json:"skipped,omitempty"` // 非图像文件等 skip 原因
+	FilePath         string      `json:"file_path"`
+	FileName         string      `json:"file_name"`
+	FileSize         int64       `json:"file_size"`
+	Type             string      `json:"type"`
+	IsEdited         bool        `json:"is_edited"`
+	Verdict          string      `json:"verdict"`     // 编辑检测
+	IsAIGenerated    bool        `json:"is_ai_generated"`
+	AIVerdict        string      `json:"ai_verdict"`  // AI 生成检测
+	C2PA             *c2paReport `json:"c2pa,omitempty"`
+	CameraMake       string      `json:"camera_make,omitempty"`
+	CameraModel      string      `json:"camera_model,omitempty"`
+	LensModel        string      `json:"lens_model,omitempty"`
+	Software         string      `json:"software,omitempty"`
+	DateTimeOriginal string      `json:"date_time_original,omitempty"`
+	ModifyDate       string      `json:"modify_date,omitempty"`
+	AISignals        []string    `json:"ai_signals"`
+	Signals          []string    `json:"signals"` // 编辑信号
+	Skipped          string      `json:"skipped,omitempty"`
 }
 
 // VerifyPrinter 是 verify 命令的输出渲染器。
 type VerifyPrinter struct {
 	out    io.Writer
 	format string
+	detail bool // --c2pa：展开 C2PA MANIFEST section（即便没 manifest 也显示 Present: no）
 	color  *Colorer
 }
 
 // NewVerifyPrinter 构造 printer。format ∈ {"table","json"}。
+// detail=true（--c2pa）时强制展开 C2PA MANIFEST section。
 // out 为 *os.File 时走 TTY 探测；其他 writer 不上色（单元测试断言简单）。
-func NewVerifyPrinter(out io.Writer, format string) *VerifyPrinter {
+func NewVerifyPrinter(out io.Writer, format string, detail bool) *VerifyPrinter {
 	useColor := writerIsTTY(out) && !NoColor()
 	return &VerifyPrinter{
 		out:    out,
 		format: strings.ToLower(strings.TrimSpace(format)),
+		detail: detail,
 		color:  NewColorer(useColor),
 	}
 }
@@ -118,15 +136,40 @@ func (p *VerifyPrinter) printTable(record *media.MediaRecord) error {
 		}
 	}
 
-	// Verdict
+	// Verdict（两个独立维度：AI 生成 + 编辑）
 	fmt.Fprintln(p.out)
 	fmt.Fprintln(p.out, p.color.SectionHeader("VERDICT"))
-	p.row("Result", p.colorVerdict(report.Verdict))
+	p.row("AI", p.colorAIVerdict(report.AIVerdict))
+	p.row("Edit", p.colorVerdict(report.Verdict))
 
-	// Signals
+	// C2PA MANIFEST（--c2pa 强制展开；否则仅在有 manifest 时显示）
+	if p.detail || report.C2PA != nil {
+		fmt.Fprintln(p.out)
+		fmt.Fprintln(p.out, p.color.SectionHeader("C2PA MANIFEST"))
+		if report.C2PA != nil {
+			p.row("Present", "yes")
+			if report.C2PA.Generator != "" {
+				p.row("Generator", report.C2PA.Generator)
+			}
+			p.row("Trust", p.color.Dim("detection-only (signature NOT verified)"))
+		} else {
+			p.row("Present", "no")
+		}
+	}
+
+	// AI signals
+	if len(report.AISignals) > 0 {
+		fmt.Fprintln(p.out)
+		fmt.Fprintln(p.out, p.color.SectionHeader("AI SIGNALS"))
+		for _, s := range report.AISignals {
+			fmt.Fprintf(p.out, "  %s\n", s)
+		}
+	}
+
+	// Edit signals
 	if len(report.Signals) > 0 {
 		fmt.Fprintln(p.out)
-		fmt.Fprintln(p.out, p.color.SectionHeader("SIGNALS"))
+		fmt.Fprintln(p.out, p.color.SectionHeader("EDIT SIGNALS"))
 		for _, s := range report.Signals {
 			fmt.Fprintf(p.out, "  %s\n", s)
 		}
@@ -152,16 +195,30 @@ func (p *VerifyPrinter) colorVerdict(v string) string {
 	}
 }
 
+func (p *VerifyPrinter) colorAIVerdict(v string) string {
+	switch v {
+	case media.AIVerdictGenerated:
+		return p.color.Yellow(v) // 注意：AI 生成
+	case media.AIVerdictNotAI:
+		return p.color.Green(v)
+	default:
+		return p.color.Dim(v)
+	}
+}
+
 // buildReport 把 record 转成 VerifyReport 结构（JSON / table 共用）。
 func buildReport(record *media.MediaRecord) VerifyReport {
 	r := VerifyReport{
-		FilePath: record.FilePath,
-		FileName: record.FileName,
-		FileSize: record.FileSize,
-		Type:     record.Type.String(),
-		Verdict:  media.Verdict(record),
-		IsEdited: media.IsEdited(record),
-		Signals:  media.EditSignals(record),
+		FilePath:      record.FilePath,
+		FileName:      record.FileName,
+		FileSize:      record.FileSize,
+		Type:          record.Type.String(),
+		Verdict:       media.Verdict(record),
+		IsEdited:      media.IsEdited(record),
+		AIVerdict:     media.AIVerdict(record),
+		IsAIGenerated: media.IsAIGenerated(record),
+		AISignals:     media.AISignals(record),
+		Signals:       media.EditSignals(record),
 	}
 
 	if record.Type != media.TypeImage {
@@ -178,6 +235,13 @@ func buildReport(record *media.MediaRecord) VerifyReport {
 		}
 		if record.Exif.HasModifyDate {
 			r.ModifyDate = record.Exif.ModifyDate.Format("2006-01-02 15:04:05")
+		}
+		if record.Exif.C2PA != nil {
+			r.C2PA = &c2paReport{
+				Present:   record.Exif.C2PA.Present,
+				Generator: record.Exif.C2PA.Generator,
+				Trust:     "detection-only",
+			}
 		}
 	}
 

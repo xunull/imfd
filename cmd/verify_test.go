@@ -14,6 +14,7 @@ import (
 func resetVerifyFlags(t *testing.T) {
 	t.Helper()
 	flagVerifyFormat = "table"
+	flagVerifyC2PA = false
 }
 
 // makeTempFile 在 t.TempDir 里建一个文件，返回路径。
@@ -30,7 +31,7 @@ func makeTempFile(t *testing.T, name string, content []byte) string {
 func TestRunVerify_FileNotFound(t *testing.T) {
 	resetVerifyFlags(t)
 	var stdout, stderr bytes.Buffer
-	err := runVerify([]string{"/nonexistent/path/zzz.jpg"}, "table", &stdout, &stderr)
+	err := runVerify([]string{"/nonexistent/path/zzz.jpg"}, "table", false, &stdout, &stderr)
 	if err == nil {
 		t.Fatal("expected error for missing path")
 	}
@@ -42,7 +43,7 @@ func TestRunVerify_FileNotFound(t *testing.T) {
 func TestRunVerify_DirectoryRejected(t *testing.T) {
 	resetVerifyFlags(t)
 	var stdout, stderr bytes.Buffer
-	err := runVerify([]string{t.TempDir()}, "table", &stdout, &stderr)
+	err := runVerify([]string{t.TempDir()}, "table", false, &stdout, &stderr)
 	if err == nil {
 		t.Fatal("expected error for directory path")
 	}
@@ -57,7 +58,7 @@ func TestRunVerify_NonImageSkipsButZeroExit(t *testing.T) {
 	path := makeTempFile(t, "test.mp4", []byte("fake mp4"))
 
 	var stdout, stderr bytes.Buffer
-	err := runVerify([]string{path}, "table", &stdout, &stderr)
+	err := runVerify([]string{path}, "table", false, &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("non-image should NOT error, got: %v\nstderr: %s", err, stderr.String())
 	}
@@ -73,7 +74,7 @@ func TestRunVerify_FakeImageTable(t *testing.T) {
 	path := makeTempFile(t, "fake.jpg", []byte("not-real-jpg"))
 
 	var stdout, stderr bytes.Buffer
-	err := runVerify([]string{path}, "table", &stdout, &stderr)
+	err := runVerify([]string{path}, "table", false, &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("runVerify: %v\nstderr: %s", err, stderr.String())
 	}
@@ -95,7 +96,7 @@ func TestRunVerify_FakeImageJSON(t *testing.T) {
 	path := makeTempFile(t, "fake.jpg", []byte("not-real-jpg"))
 
 	var stdout, stderr bytes.Buffer
-	err := runVerify([]string{path}, "json", &stdout, &stderr)
+	err := runVerify([]string{path}, "json", false, &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("runVerify: %v\nstderr: %s", err, stderr.String())
 	}
@@ -132,7 +133,7 @@ func TestRunVerify_MultipleFilesContinueOnError(t *testing.T) {
 	goodPath := makeTempFile(t, "good.jpg", []byte("fake"))
 
 	var stdout, stderr bytes.Buffer
-	err := runVerify([]string{"/nope/zzz.jpg", goodPath}, "table", &stdout, &stderr)
+	err := runVerify([]string{"/nope/zzz.jpg", goodPath}, "table", false, &stdout, &stderr)
 	if err == nil {
 		t.Fatal("expected error summary (1 failed)")
 	}
@@ -151,7 +152,7 @@ func TestRunVerify_MultipleFilesSeparator(t *testing.T) {
 	b := makeTempFile(t, "b.jpg", []byte("fake"))
 
 	var stdout, stderr bytes.Buffer
-	if err := runVerify([]string{a, b}, "table", &stdout, &stderr); err != nil {
+	if err := runVerify([]string{a, b}, "table", false, &stdout, &stderr); err != nil {
 		t.Fatalf("runVerify: %v", err)
 	}
 	out := stdout.String()

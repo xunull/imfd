@@ -45,6 +45,27 @@
 
 ---
 
+## verify C2PA / AI 检测的延后项（v2）
+
+**背景**：`verify --c2pa` v1 已做 detection-only 的 AI 生成检测（C2PA manifest + EXIF/PNG keyword + SD 签名）。以下是有意延后的增强。
+
+- [ ] **C2PA 密码学签名验证**（`--c2pa-verify`）：v1 只检测 manifest 存在 + 提取 generator，不验证 COSE 签名 / X.509 cert chain / TSP timestamp。完整验证让 verify 能用于法证。已引入 `fxamacker/cbor`，验证栈可在此基础上加；或 subprocess 调 c2patool（但破坏纯 Go 静态 binary）。
+- [ ] **HEIC / MP4 / WebP 的 C2PA**：v1 只解 JPEG App11 + PNG chunk。HEIC（iPhone 默认）、MP4、WebP 用 ISOBMFF / RIFF container 嵌 C2PA，需各自 box/chunk parser。HEIC 优先级最高（iPhone 用户基数大）。
+- [ ] **PNG 压缩 iTXt chunk**：v1 只解未压缩 iTXt（flag=0）。压缩 iTXt 需 zlib 解压。ComfyUI 默认不压缩所以不急，但某些工具会压缩。
+- [ ] **Photoshop 生成式填充检测**：Photoshop generative fill 写 `Software="Adobe Photoshop"`，AI 生成信息只在 C2PA manifest 的 action（`c2pa.created` + AI ingredient）里。v1 靠 C2PA present 能抓到，但若 C2PA 被剥则漏判为 `edited`。v2 可解析 C2PA actions 区分「AI 生成」vs「AI 编辑」。
+- [ ] **cache nullable-field migration**：目前每次扩展 ExifInfo 字段都 bump schema 触发全量重建（已 bump 3 次）。v2 改成 nullable 字段共存 + 增量迁移，避免用户每次升级都重扫整库。
+
+## Demo 脚本里追加 verify 演示
+
+`asciinema` demo（见上面的发布计划）录制时，加一段 verify 演示：
+```bash
+imfd verify --c2pa ai-image.jpg   # → ai-generated, generator: DALL·E 3
+imfd list --ai ~/Downloads        # 找出下载目录里的 AI 图
+```
+「能检测 AI 生成图的 CLI」是 r/commandline / HN 的流量点。
+
+---
+
 <!-- 未来新增的 TODO 项添加到上面。已完成的项移到下方归档。 -->
 
 ## Archive

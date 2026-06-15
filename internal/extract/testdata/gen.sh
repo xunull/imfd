@@ -66,7 +66,30 @@ ffmpeg -y -f lavfi -i "color=blue:size=320x240" -frames:v 1 image_no_exif.png 2>
 
 rm -f _base.jpg
 
+# 5) image_ai_c2pa.jpg —— 真实 C2PA 签名 JPEG（AI 生成检测验证）
+# 需要 c2patool（brew install c2patool）。这是检测真实 JUMBF/CBOR 结构的关键 fixture——
+# 合成 fixture 是 self-fulfilling oracle，真签名文件才能验证 byte-scan 在野外有效。
+# 仓库已 checked-in 一份；c2patool 在则重新生成（保持新鲜）。
+if command -v c2patool >/dev/null 2>&1; then
+  ffmpeg -y -f lavfi -i "color=green:size=320x240" -frames:v 1 _c2pa_base.jpg 2>/dev/null
+  cat > _c2pa_manifest.json <<'JSON'
+{
+  "claim_generator_info": [{ "name": "imfd-test-generator", "version": "1.0" }],
+  "assertions": [
+    { "label": "c2pa.actions", "data": { "actions": [{ "action": "c2pa.created" }] } }
+  ]
+}
+JSON
+  c2patool _c2pa_base.jpg -m _c2pa_manifest.json -o image_ai_c2pa.jpg --force >/dev/null 2>&1 \
+    && echo "regenerated image_ai_c2pa.jpg via c2patool" \
+    || echo "WARN: c2patool sign failed, keeping checked-in image_ai_c2pa.jpg"
+  rm -f _c2pa_base.jpg _c2pa_manifest.json
+else
+  echo "NOTE: c2patool not installed — keeping checked-in image_ai_c2pa.jpg"
+  echo "      (install via 'brew install c2patool' to regenerate)"
+fi
+
 echo "Generated:"
 ls -lh audio.mp3 audio.flac audio.wav video.mp4 \
        image_original_sony.jpg image_edited_lightroom.jpg \
-       image_camera_rendered_sony.jpg image_no_exif.png
+       image_camera_rendered_sony.jpg image_no_exif.png image_ai_c2pa.jpg
